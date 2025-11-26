@@ -8,7 +8,7 @@
             "dependsOn": ["compile-include-files"],
             "args": [
                 "-c",
-                "gfortran -g -Og -fimplicit-none -fcheck=all -fbacktrace ${file} -I${fileDirname}/include ${fileDirname}/builds/*.o -o ${fileDirname}/builds/${fileBasenameNoExtension}.out"
+                "gfortran -g -Og -fimplicit-none -fcheck=all -fbacktrace main.f90 -I${workspaceFolder}/include ${workspaceFolder}/builds/*.o -o ${workspaceFolder}/builds/main.out"
             ]
         },
         {
@@ -18,14 +18,14 @@
             "dependsOn": "create-folders",
             "args": [
                 "-c",
-                "cd ${fileDirname} && ./compile_modules.sh"
+                "cd ${workspaceFolder} && ./compile_modules.sh"
             ]
         },
         {
             "label": "create-folders",
             "type": "shell",
             "command": "mkdir",
-            "args": ["-p", "${fileDirname}/builds"]
+            "args": ["-p", "${workspaceFolder}/builds"]
         }
     ]
 }

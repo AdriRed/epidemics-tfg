@@ -6,6 +6,7 @@
     "fortran.formatting.formatter": "findent",
     "fortran.formatting.path": "/usr/bin",
     "[FortranFreeForm]": {
+        "editor.insertSpaces": true,
         "editor.indentSize": 3
     }
 }

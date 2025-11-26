@@ -1,14 +1,14 @@
 program main
-    use net_loader
-    implicit none
-    
-    type(epidemic_net) net
+   use net_loader
+   implicit none
 
-    open(unit=11, file='../files/test-file-1.txt', action='read')
+   type(epidemic_net) net
 
-    net = init_arrays(11)
+   open(unit=11, file='../files/test-file-1.txt', action='read')
 
-    write(*, *) 'NEIGHBOUR LENGTHS', size(net%neighbours)
+   net = initialize_net(11)
 
-    close(unit=11)
+   write(*, *) 'NEIGHBOUR LENGTHS', size(net%neighbours)
+
+   close(unit=11)
 end program main

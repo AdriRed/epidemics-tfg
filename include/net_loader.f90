@@ -6,12 +6,34 @@ module net_loader
       integer, allocatable :: neighbours(:), starter_ptrs(:), end_ptrs(:), degree(:)
       integer :: nodes_count, links_count
       type(int_int_hashmap), private :: hashmap
+      contains
+         procedure, public :: get_neighbours
+
+
    end type epidemic_net
 contains
+
+   function get_neighbours(this, node_id) result(retval)
+      integer, allocatable:: retval(:)
+      integer, intent(in) :: node_id
+      class(epidemic_net), intent(inout) :: this
+      integer :: index
+      call this%hashmap%get(node_id, index)
+      allocate(retval(this%end_ptrs(index)-this%starter_ptrs(index)))
+      retval = this%neighbours(this%starter_ptrs(index):this%end_ptrs(index))
+   end function get_neighbours
+
    type(epidemic_net) function initialize_net(unit) result(net)
       integer, intent(in) :: unit
       call init_hashmap(unit, net)
+      
+      allocate(net%neighbours(2*net%links_count), &
+         net%starter_ptrs(net%nodes_count), &
+         net%end_ptrs(net%nodes_count), &
+         net%degree(net%nodes_count))
+
       call init_degrees_pointers(unit, net)
+      call init_neighbours(unit, net)
    end function initialize_net
 
    subroutine init_degrees_pointers(unit, net)
@@ -41,21 +63,38 @@ contains
 
    end subroutine init_degrees_pointers
 
+   integer function count_lines(unit) result(retval)
+        integer, intent(in) :: unit
+        integer :: iostat
+        retval = 0
+        rewind(unit)
+
+        loop: do 
+            read(unit, *, iostat=iostat) 
+            if (iostat < 0) then
+                exit loop 
+            else
+                retval = retval + 1
+            end if
+        end do loop
+
+        return
+    end function count_lines
+
    subroutine init_hashmap(unit, net)
       integer, intent(in) :: unit
       type(epidemic_net), intent(inout) :: net
       integer :: i, iostat, dummy, node_a, node_b, lines
       logical :: exists
-      rewind(unit)
       i = 1
-      lines = 0
-      call net%hashmap%reserve(100000000)
+      lines = count_lines(unit)
+      rewind(unit)
+      call net%hashmap%reserve(lines) ! reserve 1E8 entries in nodes
       loop: do
          read(unit, *, iostat=iostat) node_a, node_b
          if (iostat < 0) then
             exit loop
          else
-            lines = lines+1
             call net%hashmap%get(node_a, dummy, exists)
             if (.not. exists) then
                call net%hashmap%set(node_a, i)
@@ -66,18 +105,33 @@ contains
                call net%hashmap%set(node_b, i)
                i = i+1
             end if
-
          end if
       end do loop
 
       net%nodes_count = net%hashmap%key_count()
       net%links_count = lines
-
-
-      allocate(net%neighbours(net%links_count), &
-         net%starter_ptrs(net%nodes_count), &
-         net%end_ptrs(net%nodes_count), &
-         net%degree(net%nodes_count))
-
    end subroutine init_hashmap
+
+   subroutine init_neighbours(unit, net)
+      integer, intent(in) :: unit
+      type(epidemic_net), intent(inout) :: net
+      integer :: iostat, node_a, node_b, index_node_a, index_node_b
+
+      rewind(unit)
+      loop: do
+         read(unit, *, iostat=iostat) node_a, node_b
+         if (iostat < 0) then
+            exit loop
+         else
+            call net%hashmap%get(node_a, index_node_a)
+            call net%hashmap%get(node_b, index_node_b)
+            
+            net%end_ptrs(index_node_a) = net%end_ptrs(index_node_a) + 1
+            net%end_ptrs(index_node_b) = net%end_ptrs(index_node_b) + 1
+            net%neighbours(net%end_ptrs(index_node_a)) = index_node_b
+            net%neighbours(net%end_ptrs(index_node_b)) = index_node_a
+
+         end if
+      end do loop
+   end subroutine init_neighbours
 end module net_loader

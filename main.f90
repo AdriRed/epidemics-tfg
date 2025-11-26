@@ -10,5 +10,7 @@ program main
 
    write(*, *) 'NEIGHBOUR LENGTHS', size(net%neighbours)
 
+   write(*, *) net%get_neighbours(6)
+
    close(unit=11)
 end program main

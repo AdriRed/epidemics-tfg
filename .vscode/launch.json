@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/builds/main.out",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/builds",
+            "cwd": "${workspaceFolder}",
             "environment": [],
             "externalConsole": false,
             "preLaunchTask": "compile-fortran",

@@ -42,6 +42,8 @@ contains
       call init_neighbours(unit, net)
       write(*, *) 'Initialized neighbour array'
 
+      call clean_repeated_negibours(net)
+      write(*, *) 'Cleaned neighbours'
    end function initialize_net
 
 

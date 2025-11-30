@@ -20,7 +20,7 @@ contains
       class(epidemic_net), intent(inout) :: this
       integer :: index
       call this%hashmap%get(node_id, index)
-      allocate(retval(this%end_ptrs(index)-this%starter_ptrs(index)))
+      allocate(retval(this%degree(index)))
       retval = this%neighbours(this%starter_ptrs(index):this%end_ptrs(index))
    end function get_neighbours
 
@@ -44,33 +44,6 @@ contains
 
    end function initialize_net
 
-   integer(int64) function net_memory_bytes(net) result(total)
-      type(epidemic_net), intent(in) :: net
-      integer(int64) :: bytes_element
-
-      total = 0
-
-      ! neighbours
-      bytes_element = storage_size(net%neighbours) / 8
-      total = total + size(net%neighbours, kind=int64) * bytes_element
-
-      ! starter_ptrs
-      bytes_element = storage_size(net%starter_ptrs) / 8
-      total = total + size(net%starter_ptrs, kind=int64) * bytes_element
-
-      ! end_ptrs
-      bytes_element = storage_size(net%end_ptrs) / 8
-      total = total + size(net%end_ptrs, kind=int64) * bytes_element
-
-      ! degree
-      bytes_element = storage_size(net%degree) / 8
-      total = total + size(net%degree, kind=int64) * bytes_element
-
-      ! Hashmap → depende de fhash (tienes que mirar su implementación)
-      ! Si tiene allocatables internos, habrá que sumarlos igual que arriba
-
-   end function net_memory_bytes
-
 
    subroutine init_degrees_pointers(unit, net)
       integer, intent(in) :: unit
@@ -78,17 +51,19 @@ contains
       integer :: iostat, node_a, node_b, index_node_a, index_node_b, i
       rewind(unit)
 
-      loop: do
+      do
          read(unit, *, iostat=iostat) node_a, node_b
          if (iostat < 0) then
-            exit loop
+            exit
          else
+            if (node_a == node_b) continue ! skip autolinks
+
             call net%hashmap%get(node_a, index_node_a)
             call net%hashmap%get(node_b, index_node_b)
             net%degree(index_node_a) = net%degree(index_node_a)+1
             net%degree(index_node_b) = net%degree(index_node_b)+1
          end if
-      end do loop
+      end do
 
       net%starter_ptrs(1) = 1
       net%end_ptrs(1) = 0
@@ -105,14 +80,14 @@ contains
       retval = 0
       rewind(unit)
 
-      loop: do
+      do
          read(unit, *, iostat=iostat)
          if (iostat < 0) then
-            exit loop
+            exit
          else
             retval = retval + 1
          end if
-      end do loop
+      end do
 
       return
    end function count_lines
@@ -126,11 +101,13 @@ contains
       lines = count_lines(unit)
       rewind(unit)
       call net%hashmap%reserve(lines) ! reserve N approx E nodes
-      loop: do
+      do
          read(unit, *, iostat=iostat) node_a, node_b
          if (iostat < 0) then
-            exit loop
+            exit
          else
+            if (node_a == node_b) continue ! skip autolinks
+
             call net%hashmap%get(node_a, dummy, exists)
             if (.not. exists) then
                call net%hashmap%set(node_a, i)
@@ -142,7 +119,7 @@ contains
                i = i+1
             end if
          end if
-      end do loop
+      end do
 
       net%nodes_count = net%hashmap%key_count()
       net%links_count = lines
@@ -154,11 +131,13 @@ contains
       integer :: iostat, node_a, node_b, index_node_a, index_node_b
 
       rewind(unit)
-      loop: do
+      do
          read(unit, *, iostat=iostat) node_a, node_b
          if (iostat < 0) then
-            exit loop
+            exit
          else
+            if (node_a == node_b) continue ! skip autolinks
+
             call net%hashmap%get(node_a, index_node_a)
             call net%hashmap%get(node_b, index_node_b)
 
@@ -168,6 +147,51 @@ contains
             net%neighbours(net%end_ptrs(index_node_b)) = index_node_a
 
          end if
-      end do loop
+      end do
    end subroutine init_neighbours
+
+   subroutine clean_repeated_negibours(net)
+      type(epidemic_net), intent(inout) :: net
+      integer :: i, j, k
+      integer :: startp, endp, curr_neigh
+      logical :: found
+
+
+      do i = 1, net%nodes_count
+         startp = net%starter_ptrs(i)
+         endp   = net%end_ptrs(i)
+
+         ! empty neighbours
+         if (endp < startp) cycle
+
+         j = startp
+         do while (j <= endp)
+            curr_neigh = net%neighbours(j)
+            found = .false.
+
+            ! search repeated neighbours
+            do k = startp, j-1
+               if (net%neighbours(k) == curr_neigh) then ! found repeated neighbour
+                  found = .true.
+                  exit
+               end if
+            end do
+
+            if (found) then ! if repeated neighbour found
+               ! replace with the latest neighbour
+               net%neighbours(j) = net%neighbours(endp)
+               ! reduce end pointer and degree
+               endp = endp - 1
+               net%degree(i) = net%degree(i) - 1
+               ! continue do while
+               cycle
+            else ! if not found, next neighbour
+               j = j + 1
+            end if
+         end do
+
+         net%end_ptrs(i) = endp
+      end do
+   end subroutine clean_repeated_negibours
+
 end module net_loader

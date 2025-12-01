@@ -26,11 +26,12 @@ contains
 
    type(epidemic_net) function initialize_net(unit) result(net)
       integer, intent(in) :: unit
+      integer :: initial_links
       call init_hashmap(unit, net)
       write(*, *) 'Initialized hash map'
       write(*, *) '---- nodes count -> ', net%nodes_count
       write(*, *) '---- links count -> ', net%links_count
-
+      initial_links = net%links_count
       allocate(net%neighbours(2*net%links_count), &
          net%starter_ptrs(net%nodes_count), &
          net%end_ptrs(net%nodes_count), &
@@ -43,7 +44,7 @@ contains
       write(*, *) 'Initialized neighbour array'
 
       call clean_repeated_negibours(net)
-      write(*, *) 'Cleaned neighbours'
+      write(*, *) 'Cleaned neighbours. Reduced neighbours by ', net%links_count-initial_links
    end function initialize_net
 
 
@@ -185,6 +186,7 @@ contains
                ! reduce end pointer and degree
                endp = endp - 1
                net%degree(i) = net%degree(i) - 1
+               net%links_count = net%links_count-1
                ! continue do while
                cycle
             else ! if not found, next neighbour

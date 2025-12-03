@@ -1,32 +1,30 @@
 module net_loader
    use fhash
-   use iso_fortran_env, only: int64
+   use iso_fortran_env, only: int32
    implicit none
-
+   integer, parameter :: ik = int32
    type epidemic_net
-      integer, allocatable :: neighbours(:), starter_ptrs(:), end_ptrs(:), degree(:)
-      integer :: nodes_count, links_count
+      integer(ik), allocatable :: neighbours(:), starter_ptrs(:), end_ptrs(:), degree(:)
+      integer(ik) :: nodes_count = 0, links_count= 0
       type(int_int_hashmap), private :: hashmap
    contains
       procedure, public :: get_neighbours
-
-
    end type epidemic_net
 contains
 
    function get_neighbours(this, node_id) result(retval)
-      integer, allocatable:: retval(:)
-      integer, intent(in) :: node_id
+      integer(ik), allocatable:: retval(:)
+      integer(ik), intent(in) :: node_id
       class(epidemic_net), intent(inout) :: this
-      integer :: index
+      integer(ik) :: index
       call this%hashmap%get(node_id, index)
       allocate(retval(this%degree(index)))
       retval = this%neighbours(this%starter_ptrs(index):this%end_ptrs(index))
    end function get_neighbours
 
    type(epidemic_net) function initialize_net(unit) result(net)
-      integer, intent(in) :: unit
-      integer :: initial_links
+      integer(ik), intent(in) :: unit
+      integer(ik) :: initial_links
       call init_hashmap(unit, net)
       write(*, *) 'Initialized hash map'
       write(*, *) '---- nodes count -> ', net%nodes_count
@@ -49,9 +47,9 @@ contains
 
 
    subroutine init_degrees_pointers(unit, net)
-      integer, intent(in) :: unit
+      integer(ik), intent(in) :: unit
       type(epidemic_net), intent(inout) :: net
-      integer :: iostat, node_a, node_b, index_node_a, index_node_b, i
+      integer(ik) :: iostat, node_a, node_b, index_node_a, index_node_b, i
       rewind(unit)
 
       do
@@ -77,9 +75,9 @@ contains
 
    end subroutine init_degrees_pointers
 
-   integer function count_lines(unit) result(retval)
-      integer, intent(in) :: unit
-      integer :: iostat
+   integer(ik) function count_lines(unit) result(retval)
+      integer(ik), intent(in) :: unit
+      integer(ik) :: iostat
       retval = 0
       rewind(unit)
 
@@ -96,9 +94,9 @@ contains
    end function count_lines
 
    subroutine init_hashmap(unit, net)
-      integer, intent(in) :: unit
+      integer(ik), intent(in) :: unit
       type(epidemic_net), intent(inout) :: net
-      integer :: i, iostat, dummy, node_a, node_b, lines
+      integer(ik) :: i, iostat, dummy, node_a, node_b, lines
       logical :: exists
       i = 1
       lines = count_lines(unit)
@@ -129,9 +127,9 @@ contains
    end subroutine init_hashmap
 
    subroutine init_neighbours(unit, net)
-      integer, intent(in) :: unit
+      integer(ik), intent(in) :: unit
       type(epidemic_net), intent(inout) :: net
-      integer :: iostat, node_a, node_b, index_node_a, index_node_b
+      integer(ik) :: iostat, node_a, node_b, index_node_a, index_node_b
 
       rewind(unit)
       do
@@ -155,8 +153,8 @@ contains
 
    subroutine clean_repeated_negibours(net)
       type(epidemic_net), intent(inout) :: net
-      integer :: i, j, k
-      integer :: startp, endp, curr_neigh
+      integer(ik) :: i, j, k
+      integer(ik) :: startp, endp, curr_neigh
       logical :: found
 
 

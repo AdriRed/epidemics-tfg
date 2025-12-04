@@ -2,25 +2,25 @@ module net_loader
    use fhash
    use iso_fortran_env, only: int32
    implicit none
-   integer, parameter :: ik = int32
+   integer, parameter, private :: ik = int32
    type epidemic_net
       integer(ik), allocatable :: neighbours(:), starter_ptrs(:), end_ptrs(:), degree(:)
       integer(ik) :: nodes_count = 0, links_count= 0
-      type(int_int_hashmap), private :: hashmap
+      type(int_int_hashmap) :: hashmap
    contains
-      procedure, public :: get_neighbours
+      procedure, public :: get_neighbours_by_index
    end type epidemic_net
 contains
 
-   function get_neighbours(this, node_id) result(retval)
+   function get_neighbours_by_index(this, node_index) result(retval)
       integer(ik), allocatable:: retval(:)
-      integer(ik), intent(in) :: node_id
+      integer(ik), intent(in) :: node_index
       class(epidemic_net), intent(inout) :: this
-      integer(ik) :: index
-      call this%hashmap%get(node_id, index)
-      allocate(retval(this%degree(index)))
-      retval = this%neighbours(this%starter_ptrs(index):this%end_ptrs(index))
-   end function get_neighbours
+      allocate(retval(this%degree(node_index)))
+      retval = this%neighbours(this%starter_ptrs(node_index):this%end_ptrs(node_index))
+   end function get_neighbours_by_index
+
+   
 
    type(epidemic_net) function initialize_net(unit) result(net)
       integer(ik), intent(in) :: unit

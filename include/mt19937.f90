@@ -52,24 +52,24 @@
 
 MODULE mt19937
    IMPLICIT NONE
-   INTEGER, PARAMETER :: dp = SELECTED_REAL_KIND(12, 60)
+   INTEGER, PARAMETER, PRIVATE :: dp = SELECTED_REAL_KIND(12, 60)
 
 ! Period parameters
-   INTEGER, PARAMETER :: n = 624, n1 = n+1, m = 397, mata = -1727483681
+   INTEGER, PARAMETER, PRIVATE :: n = 624, n1 = n+1, m = 397, mata = -1727483681
 !                                    constant vector a
-   INTEGER, PARAMETER :: umask = -2147483647 - 1
+   INTEGER, PARAMETER, PRIVATE :: umask = -2147483647 - 1
 !                                    most significant w-r bits
-   INTEGER, PARAMETER :: lmask =  2147483647
+   INTEGER, PARAMETER, PRIVATE :: lmask =  2147483647
 !                                    least significant r bits
 ! Tempering parameters
-   INTEGER, PARAMETER :: tmaskb= -1658038656, tmaskc= -272236544
+   INTEGER, PARAMETER, PRIVATE :: tmaskb= -1658038656, tmaskc= -272236544
 
 !                     the array for the state vector
    INTEGER, SAVE      :: mt(0:n-1), mti = n1
 !                     mti==N+1 means mt[N] is not initialized
 
    PRIVATE
-   PUBLIC :: dp, sgrnd, grnd, init_genrand
+   PUBLIC :: sgrnd, grnd, init_genrand
 
 CONTAINS
 

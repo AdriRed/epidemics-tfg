@@ -63,7 +63,7 @@ contains
    subroutine infect(this)
       class(epidemic_simulation), intent(inout) :: this
       integer(ik) :: chosen_link_idx
-      chosen_link_idx = int(grnd()*this%active_links_count, kind=ik)
+      chosen_link_idx = int(grnd()*this%active_links_count, kind=ik)+1
       call this%infect_node(chosen_link_idx)
    end subroutine infect
 
@@ -122,23 +122,27 @@ contains
    subroutine recover(this)
       class(epidemic_simulation), intent(inout) :: this
       integer(ik) :: chosen_node_idx
-      chosen_node_idx = int(grnd()*this%infected_nodes_count, kind=ik)
+      chosen_node_idx = int(grnd()*this%infected_nodes_count, kind=ik)+1
       call this%recover_node(chosen_node_idx)
    end subroutine recover
 
    subroutine recover_node(this, recovered_idx)
       class(epidemic_simulation), intent(inout) :: this
       integer(ik), intent(in) :: recovered_idx
-      integer(ik) :: neighbor_link_idx
-      integer(ik) :: i
+      integer(ik) :: neighbor_link_idx, i, recovered_node
+      recovered_node = this%infected_nodes(recovered_idx)
       ! change node state
-      this%node_states(recovered_idx) = 0
+      this%node_states(recovered_node) = 0
+      ! remove infected node
+      this%infected_nodes(recovered_idx) = this%infected_nodes(this%infected_nodes_count)
+      this%infected_nodes_count = this%infected_nodes_count - 1
+
       ! foreach neighbour
-      do i = this%net%starter_ptrs(recovered_idx), this%net%end_ptrs(recovered_idx)
+      do i = this%net%starter_ptrs(recovered_node), this%net%end_ptrs(recovered_node)
          if (this%node_states(i) == 1) then
             ! add as active link with the self recovered node
-            neighbor_link_idx = this%add_active_link(recovered_idx, i)
-            this%neighbours_active_links_index(i) = neighbor_link_idx         
+            neighbor_link_idx = this%add_active_link(recovered_node, i)
+            this%neighbours_active_links_index(i) = neighbor_link_idx
          elseif (this%node_states(i) == 0) then
             ! remove active link between two recovered nodes
             neighbor_link_idx = this%neighbours_active_links_index(i)

@@ -32,8 +32,11 @@ module epidemic
       integer(ik), allocatable :: neighbours_active_links_index(:)
    contains
       procedure, public :: advance_time
+      procedure, private :: remove_active_link
+      procedure, private :: add_active_link
       procedure, private :: calculate_actual_rates
       procedure, public :: act
+      procedure, public :: infect_node
       procedure, private :: infect
       procedure, private :: recover
    end type epidemic_simulation
@@ -49,11 +52,72 @@ contains
          retval%infected_nodes(net%nodes_count), &
          retval%neighbours_active_links_index(2*net%links_count))
 
+      retval%active_links(:, :) = 0
+      retval%node_states(:) = 0
+      retval%infected_nodes(:) = 0
+      retval%neighbours_active_links_index(:) = 0
+
    end function initialize_simulation
 
    subroutine infect(this)
       class(epidemic_simulation), intent(inout) :: this
+      integer(ik) :: chosen_link_idx
+      chosen_link_idx = int(grnd()*this%active_links_count, kind=ik)
+      call this%infect_node(chosen_link_idx)
    end subroutine infect
+   
+   subroutine infect_node(this, idx)
+      class(epidemic_simulation), intent(inout) :: this
+      integer(ik), intent(in) :: idx
+      integer(ik) :: neighbor_link_idx
+      integer(ik) :: origin_node_idx, node_to_infect_idx
+      integer(ik) :: i
+      ! random active link
+      origin_node_idx = this%active_links(idx, 1)
+      node_to_infect_idx = this%active_links(idx, 2)
+      ! change node state
+      this%node_states(node_to_infect_idx) = 1
+      ! swap with last active link
+      call this%remove_active_link(idx)
+      ! add to infected nodes
+      this%infected_nodes_count = this%infected_nodes_count+1
+      this%infected_nodes(this%infected_nodes_count) = node_to_infect_idx
+      
+      ! foreach neighbour
+      do i = this%net%starter_ptrs(node_to_infect_idx), this%net%end_ptrs(node_to_infect_idx)
+         if (this%node_states(i) == 1) then
+            ! remove potential active links between node to infect and already infected node
+            neighbor_link_idx = this%neighbours_active_links_index(i)
+            if (this%active_links(neighbor_link_idx, 2) == node_to_infect_idx) then
+               call this%remove_active_link(neighbor_link_idx)
+            end if
+         elseif (this%node_states(i) == 0) then
+            ! add link between node to infect and node not infected
+            neighbor_link_idx = this%add_active_link(node_to_infect_idx, i)
+            this%neighbours_active_links_index(i) = neighbor_link_idx
+         end if
+      end do
+
+   end subroutine infect_node
+
+   integer(ik) function add_active_link(this, origin_node, target_node) result(retval)
+      class(epidemic_simulation), intent(inout) :: this
+      integer(ik) :: origin_node, target_node
+
+      this%active_links_count = this%active_links_count+1
+      this%active_links(this%active_links_count, 1) = origin_node
+      this%active_links(this%active_links_count, 2) = target_node
+
+      retval = this%active_links_count
+   end function add_active_link
+
+   subroutine remove_active_link(this, idx)
+      class(epidemic_simulation), intent(inout) :: this
+      integer(ik) :: idx
+      this%active_links(idx, 1) = this%active_links(this%active_links_count, 1)
+      this%active_links(idx, 2) = this%active_links(this%active_links_count, 2)
+      this%active_links_count = this%active_links_count - 1
+   end subroutine remove_active_link
 
    subroutine recover(this)
       class(epidemic_simulation), intent(inout) :: this

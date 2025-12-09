@@ -20,7 +20,7 @@ contains
       retval = this%neighbours(this%starter_ptrs(node_index):this%end_ptrs(node_index))
    end function get_neighbours_by_index
 
-   
+
 
    type(epidemic_net) function initialize_net(unit) result(net)
       integer(ik), intent(in) :: unit
@@ -102,7 +102,7 @@ contains
       lines = count_lines(unit)
       rewind(unit)
       call net%hashmap%reserve(lines) ! reserve N approx E nodes
-      do
+      do while(iostat .ge. 0)
          read(unit, *, iostat=iostat) node_a, node_b
          if (iostat < 0) then
             exit
@@ -132,11 +132,9 @@ contains
       integer(ik) :: iostat, node_a, node_b, index_node_a, index_node_b
 
       rewind(unit)
-      do
+      do while(iostat .ge. 0)
          read(unit, *, iostat=iostat) node_a, node_b
-         if (iostat < 0) then
-            exit
-         else
+         if (iostat .ge. 0) then
             if (node_a == node_b) cycle ! skip autolinks
 
             call net%hashmap%get(node_a, index_node_a)

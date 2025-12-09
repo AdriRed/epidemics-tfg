@@ -33,6 +33,7 @@ module epidemic
    contains
       procedure, public :: advance_time
       procedure, private :: remove_active_link
+      procedure, private :: update_active_links_ptrs
       procedure, private :: add_active_link
       procedure, private :: calculate_actual_rates
       procedure, public :: act
@@ -70,7 +71,7 @@ contains
    subroutine infect_node(this, active_link_idx)
       class(epidemic_simulation), intent(inout) :: this
       integer(ik), intent(in) :: active_link_idx
-      integer(ik) :: neighbor_link_idx
+      integer(ik) :: neighbor_link_idx, neighbor
       integer(ik) :: origin_node_idx, node_to_infect_idx
       integer(ik) :: i
       origin_node_idx = this%active_links(active_link_idx, 1)
@@ -85,20 +86,38 @@ contains
 
       ! foreach neighbour
       do i = this%net%starter_ptrs(node_to_infect_idx), this%net%end_ptrs(node_to_infect_idx)
-         if (this%node_states(i) == 1) then
+         neighbor = this%net%neighbours(i)
+         if (this%node_states(neighbor) == 1) then
             ! remove potential active links between node to infect and already infected node
             neighbor_link_idx = this%neighbours_active_links_index(i)
             if (this%active_links(neighbor_link_idx, 2) == node_to_infect_idx) then
                call this%remove_active_link(neighbor_link_idx)
+               call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count+1)
             end if
-         elseif (this%node_states(i) == 0) then
+         elseif (this%node_states(neighbor) == 0) then
             ! add link between node to infect and node not infected
-            neighbor_link_idx = this%add_active_link(node_to_infect_idx, i)
+            neighbor_link_idx = this%add_active_link(node_to_infect_idx, neighbor)
             this%neighbours_active_links_index(i) = neighbor_link_idx
          end if
       end do
 
    end subroutine infect_node
+
+   subroutine update_active_links_ptrs(this, idx, last_idx)
+      class(epidemic_simulation), intent(inout) :: this
+      integer(ik), intent(in) :: idx, last_idx
+      integer(ik) :: origin_node, i
+
+      origin_node = this%active_links(last_idx, 1)
+
+      do i = this%net%starter_ptrs(origin_node), this%net%end_ptrs(origin_node)
+         if (this%neighbours_active_links_index(i) == last_idx) then
+            this%neighbours_active_links_index(i) = idx
+            exit   ! there is only one link with the reference out of bounds of array
+         end if
+      end do
+
+   end subroutine update_active_links_ptrs
 
    integer(ik) function add_active_link(this, origin_node, target_node) result(retval)
       class(epidemic_simulation), intent(inout) :: this
@@ -129,7 +148,7 @@ contains
    subroutine recover_node(this, recovered_idx)
       class(epidemic_simulation), intent(inout) :: this
       integer(ik), intent(in) :: recovered_idx
-      integer(ik) :: neighbor_link_idx, i, recovered_node
+      integer(ik) :: neighbor_link_idx, i, recovered_node, neighbor
       recovered_node = this%infected_nodes(recovered_idx)
       ! change node state
       this%node_states(recovered_node) = 0
@@ -139,14 +158,17 @@ contains
 
       ! foreach neighbour
       do i = this%net%starter_ptrs(recovered_node), this%net%end_ptrs(recovered_node)
-         if (this%node_states(i) == 1) then
+         neighbor = this%net%neighbours(i)
+         if (this%node_states(neighbor) == 1) then
             ! add as active link with the self recovered node
-            neighbor_link_idx = this%add_active_link(recovered_node, i)
+            neighbor_link_idx = this%add_active_link(recovered_node, neighbor)
             this%neighbours_active_links_index(i) = neighbor_link_idx
-         elseif (this%node_states(i) == 0) then
+         elseif (this%node_states(neighbor) == 0) then
             ! remove active link between two recovered nodes
             neighbor_link_idx = this%neighbours_active_links_index(i)
             call this%remove_active_link(neighbor_link_idx)
+            call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count+1)
+
          end if
       end do
    end subroutine recover_node

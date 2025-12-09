@@ -36,9 +36,10 @@ module epidemic
       procedure, private :: add_active_link
       procedure, private :: calculate_actual_rates
       procedure, public :: act
-      procedure, public :: infect_node
       procedure, private :: infect
+      procedure, public :: infect_node
       procedure, private :: recover
+      procedure, public :: recover_node
    end type epidemic_simulation
 
 contains
@@ -65,24 +66,23 @@ contains
       chosen_link_idx = int(grnd()*this%active_links_count, kind=ik)
       call this%infect_node(chosen_link_idx)
    end subroutine infect
-   
-   subroutine infect_node(this, idx)
+
+   subroutine infect_node(this, active_link_idx)
       class(epidemic_simulation), intent(inout) :: this
-      integer(ik), intent(in) :: idx
+      integer(ik), intent(in) :: active_link_idx
       integer(ik) :: neighbor_link_idx
       integer(ik) :: origin_node_idx, node_to_infect_idx
       integer(ik) :: i
-      ! random active link
-      origin_node_idx = this%active_links(idx, 1)
-      node_to_infect_idx = this%active_links(idx, 2)
+      origin_node_idx = this%active_links(active_link_idx, 1)
+      node_to_infect_idx = this%active_links(active_link_idx, 2)
       ! change node state
       this%node_states(node_to_infect_idx) = 1
       ! swap with last active link
-      call this%remove_active_link(idx)
+      call this%remove_active_link(active_link_idx)
       ! add to infected nodes
       this%infected_nodes_count = this%infected_nodes_count+1
       this%infected_nodes(this%infected_nodes_count) = node_to_infect_idx
-      
+
       ! foreach neighbour
       do i = this%net%starter_ptrs(node_to_infect_idx), this%net%end_ptrs(node_to_infect_idx)
          if (this%node_states(i) == 1) then
@@ -121,8 +121,31 @@ contains
 
    subroutine recover(this)
       class(epidemic_simulation), intent(inout) :: this
-
+      integer(ik) :: chosen_node_idx
+      chosen_node_idx = int(grnd()*this%infected_nodes_count, kind=ik)
+      call this%recover_node(chosen_node_idx)
    end subroutine recover
+
+   subroutine recover_node(this, recovered_idx)
+      class(epidemic_simulation), intent(inout) :: this
+      integer(ik), intent(in) :: recovered_idx
+      integer(ik) :: neighbor_link_idx
+      integer(ik) :: i
+      ! change node state
+      this%node_states(recovered_idx) = 0
+      ! foreach neighbour
+      do i = this%net%starter_ptrs(recovered_idx), this%net%end_ptrs(recovered_idx)
+         if (this%node_states(i) == 1) then
+            ! add as active link with the self recovered node
+            neighbor_link_idx = this%add_active_link(recovered_idx, i)
+            this%neighbours_active_links_index(i) = neighbor_link_idx         
+         elseif (this%node_states(i) == 0) then
+            ! remove active link between two recovered nodes
+            neighbor_link_idx = this%neighbours_active_links_index(i)
+            call this%remove_active_link(neighbor_link_idx)
+         end if
+      end do
+   end subroutine recover_node
 
    subroutine act(this)
       class(epidemic_simulation), intent(inout) :: this

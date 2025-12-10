@@ -57,7 +57,7 @@ contains
          if (iostat < 0) then
             exit
          else
-            if (node_a == node_b) continue ! skip autolinks
+            if (node_a == node_b) cycle ! skip autolinks
 
             call net%hashmap%get(node_a, index_node_a)
             call net%hashmap%get(node_b, index_node_b)

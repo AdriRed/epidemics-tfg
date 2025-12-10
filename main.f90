@@ -30,11 +30,19 @@ program main
    call simulation%set_infected_node(1)
    open(unit=12, file='./builds/events.dat', action='write')
    open(unit=13, file='./builds/stats.dat', action='write')
-   do i = 1, 100000
+   do i = 1, 10000000
       event = simulation%act()
       stats = simulation%get_stats()
-      write(12, *) simulation%time, event%action, event%selected_node
-      write(13, *) simulation%time, stats%rates%actual_infection_rate, stats%healthy_density
+      if (mod(i, 100000) == 0) write(*, "(I3.3, A)") i/100000, '%'
+      write(12, "(E20.10, A2, I10)") simulation%time, event%action, event%selected_node
+      write(13, "(E20.10, E20.10, E20.10)") simulation%time, stats%rates%actual_infection_rate, stats%healthy_density
+      if (simulation%infected_nodes_count == simulation%net%nodes_count) then
+         write(*, *) '100% infection reached'
+         exit
+      elseif (simulation%infected_nodes_count == 0) then
+         write(*, *) '100% health reached'
+         exit
+      end if
    end do
 
    close(unit=12)

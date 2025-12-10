@@ -4,7 +4,7 @@ module net_loader
    implicit none
    integer, parameter, private :: ik = int32
    type epidemic_net
-      integer(ik), allocatable :: neighbours(:), starter_ptrs(:), end_ptrs(:), degree(:)
+      integer(ik), allocatable :: neighbour_counterpart_ptrs(:), neighbours(:), starter_ptrs(:), end_ptrs(:), degree(:)
       integer(ik) :: nodes_count = 0, links_count= 0
       type(int_int_hashmap) :: hashmap
    contains
@@ -30,7 +30,8 @@ contains
       write(*, *) '---- nodes count -> ', net%nodes_count
       write(*, *) '---- links count -> ', net%links_count
       initial_links = net%links_count
-      allocate(net%neighbours(2*net%links_count), &
+      allocate(net%neighbour_counterpart_ptrs(2*net%links_count), &
+         net%neighbours(2*net%links_count), &
          net%starter_ptrs(net%nodes_count), &
          net%end_ptrs(net%nodes_count), &
          net%degree(net%nodes_count))
@@ -80,6 +81,7 @@ contains
       integer(ik) :: iostat
       retval = 0
       rewind(unit)
+      iostat = 0
 
       do
          read(unit, *, iostat=iostat)
@@ -101,8 +103,9 @@ contains
       i = 1
       lines = count_lines(unit)
       rewind(unit)
+      iostat = 0
       call net%hashmap%reserve(lines) ! reserve N approx E nodes
-      do while(iostat .ge. 0)
+      do
          read(unit, *, iostat=iostat) node_a, node_b
          if (iostat < 0) then
             exit
@@ -130,22 +133,25 @@ contains
       integer(ik), intent(in) :: unit
       type(epidemic_net), intent(inout) :: net
       integer(ik) :: iostat, node_a, node_b, index_node_a, index_node_b
+      iostat = 0
 
       rewind(unit)
-      do while(iostat .ge. 0)
+      do
          read(unit, *, iostat=iostat) node_a, node_b
-         if (iostat .ge. 0) then
-            if (node_a == node_b) cycle ! skip autolinks
+         if (iostat <0) exit
 
-            call net%hashmap%get(node_a, index_node_a)
-            call net%hashmap%get(node_b, index_node_b)
+         if (node_a == node_b) cycle ! skip autolinks
 
-            net%end_ptrs(index_node_a) = net%end_ptrs(index_node_a) + 1
-            net%end_ptrs(index_node_b) = net%end_ptrs(index_node_b) + 1
-            net%neighbours(net%end_ptrs(index_node_a)) = index_node_b
-            net%neighbours(net%end_ptrs(index_node_b)) = index_node_a
+         call net%hashmap%get(node_a, index_node_a)
+         call net%hashmap%get(node_b, index_node_b)
 
-         end if
+         net%end_ptrs(index_node_a) = net%end_ptrs(index_node_a) + 1
+         net%end_ptrs(index_node_b) = net%end_ptrs(index_node_b) + 1
+         net%neighbours(net%end_ptrs(index_node_a)) = index_node_b
+         net%neighbours(net%end_ptrs(index_node_b)) = index_node_a
+         net%neighbour_counterpart_ptrs(net%end_ptrs(index_node_a)) = net%end_ptrs(index_node_b)
+         net%neighbour_counterpart_ptrs(net%end_ptrs(index_node_b)) = net%end_ptrs(index_node_a)
+
       end do
    end subroutine init_neighbours
 

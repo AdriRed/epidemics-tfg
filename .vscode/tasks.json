@@ -8,7 +8,7 @@
             "dependsOn": ["compile-include-files"],
             "args": [
                 "-c",
-                "gfortran -g -Og -fimplicit-none -fcheck=all -fbacktrace main.f90 -I${workspaceFolder}/include ${workspaceFolder}/builds/*.o -o ${workspaceFolder}/builds/main.out"
+                "gfortran -g -Og -fimplicit-none -fcheck=all -fbacktrace -finit-real=snan -finit-integer=-9999 -Wall -fcheck=bounds main.f90 -I${workspaceFolder}/include ${workspaceFolder}/builds/*.o -o ${workspaceFolder}/builds/main.out"
             ]
         },
         {

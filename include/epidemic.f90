@@ -72,6 +72,7 @@ contains
       retval%node_states(:) = 0
       retval%infected_nodes(:) = 0
       retval%neighbours_active_links_index(:) = 0
+      retval%time = 0
       write(*,*) 'Initialized simulation'
    end function initialize_simulation
 
@@ -106,7 +107,8 @@ contains
    real(dp) function advance_time(this) result(retval)
       class(epidemic_simulation), intent(inout) :: this
       real(dp) :: tau, test, distr
-      logical :: found = .false.
+      logical :: found
+      found = .false.
       call this%calculate_actual_rates()
       do while (.not. found)
          tau = grnd()
@@ -122,7 +124,7 @@ contains
       class(epidemic_simulation), intent(inout) :: this
       chosen_link_idx = int(grnd()*this%active_links_count, kind=ik)+1
 
-      write(*, *) 'I:', this%active_links(chosen_link_idx, 1), '->', this%active_links(chosen_link_idx, 2)
+      ! write(*, *) 'I:', this%active_links(chosen_link_idx, 1), '->', this%active_links(chosen_link_idx, 2)
 
       call this%infect_node(chosen_link_idx)
    end function infect
@@ -130,7 +132,7 @@ contains
    integer(ik) function recover(this) result(chosen_node_idx)
       class(epidemic_simulation), intent(inout) :: this
       chosen_node_idx = int(grnd()*this%infected_nodes_count, kind=ik)+1
-      write(*, *) 'R:', this%infected_nodes(chosen_node_idx)
+      ! write(*, *) 'R:', this%infected_nodes(chosen_node_idx)
       call this%recover_node(chosen_node_idx)
    end function recover
 
@@ -153,16 +155,27 @@ contains
       ! foreach neighbour
       do i = this%net%starter_ptrs(node_to_infect_idx), this%net%end_ptrs(node_to_infect_idx)
          neighbor = this%net%neighbours(i)
-         
+
          if (neighbor == origin_node_idx) cycle
 
          if (this%node_states(neighbor) == 1) then
             ! remove potential active links between node to infect and already infected node
             neighbor_link_idx = this%neighbours_active_links_index(i)
-            if (this%active_links(neighbor_link_idx, 2) == node_to_infect_idx) then
-               call this%remove_active_link(neighbor_link_idx)
-               call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count+1)
+            if (neighbor_link_idx .gt. 0 .and. neighbor_link_idx .le. this%active_links_count) then
+               if (this%active_links(neighbor_link_idx, 2) == node_to_infect_idx) then
+                  call this%remove_active_link(neighbor_link_idx)
+                  call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count+1)
+               end if
             end if
+            ! do it backwards also
+            neighbor_link_idx = this%neighbours_active_links_index(this%net%neighbour_counterpart_ptrs(i))
+            if (neighbor_link_idx .gt. 0 .and. neighbor_link_idx .le. this%active_links_count)then
+               if (this%active_links(neighbor_link_idx, 2) == node_to_infect_idx) then
+                  call this%remove_active_link(neighbor_link_idx)
+                  call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count+1)
+               end if
+            end if
+
          elseif (this%node_states(neighbor) == 0) then
             ! add link between node to infect and node not infected
             neighbor_link_idx = this%add_active_link(node_to_infect_idx, neighbor)
@@ -182,7 +195,7 @@ contains
       this%infected_nodes_count = this%infected_nodes_count+1
       this%infected_nodes(this%infected_nodes_count) = node_to_infect_idx
 
-            ! foreach neighbour
+      ! foreach neighbour
       do i = this%net%starter_ptrs(node_to_infect_idx), this%net%end_ptrs(node_to_infect_idx)
          neighbor = this%net%neighbours(i)
          if (this%node_states(neighbor) == 0) then
@@ -210,14 +223,21 @@ contains
          neighbor = this%net%neighbours(i)
          if (this%node_states(neighbor) == 1) then
             ! add as active link with the self recovered node
-            neighbor_link_idx = this%add_active_link(recovered_node, neighbor)
-            this%neighbours_active_links_index(i) = neighbor_link_idx
+            neighbor_link_idx = this%add_active_link(neighbor, recovered_node)
+            this%neighbours_active_links_index(this%net%neighbour_counterpart_ptrs(i)) = neighbor_link_idx
          elseif (this%node_states(neighbor) == 0) then
             ! remove active link between two recovered nodes
             neighbor_link_idx = this%neighbours_active_links_index(i)
-            call this%remove_active_link(neighbor_link_idx)
-            call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count+1)
-
+            if (neighbor_link_idx .gt. 0 .and. neighbor_link_idx .le. this%active_links_count) then
+               call this%remove_active_link(neighbor_link_idx)
+               call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count+1)
+            end if
+            ! other way also
+            neighbor_link_idx = this%neighbours_active_links_index(this%net%neighbour_counterpart_ptrs(i))
+            if (neighbor_link_idx .gt. 0 .and. neighbor_link_idx .le. this%active_links_count) then
+               call this%remove_active_link(neighbor_link_idx)
+               call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count+1)
+            end if
          end if
       end do
    end subroutine recover_node

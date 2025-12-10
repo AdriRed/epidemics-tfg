@@ -93,7 +93,7 @@ contains
    type(epidemic_stats) function get_stats(this) result(retval)
       class(epidemic_simulation), intent(inout) :: this
       retval%rates = this%actual_rates
-      retval%infected_density = this%infected_nodes_count / this%net%nodes_count
+      retval%infected_density = real(this%infected_nodes_count) / this%net%nodes_count
       retval%healthy_density = 1-retval%infected_density
    end function get_stats
 

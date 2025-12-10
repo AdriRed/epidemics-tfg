@@ -16,8 +16,8 @@ program main
 
    call init_genrand(42069)
 
-   ! open(unit=11, file='./ignore-files/large_twitch_edges.csv', action='read')
-   open(unit=11, file='./files/test-file-1.txt', action='read')
+   open(unit=11, file='./ignore-files/large_twitch_edges.csv', action='read')
+   ! open(unit=11, file='./files/test-file-1.txt', action='read')
    net = initialize_net(11)
    call net%hashmap%clear()
    close(unit=11)
@@ -35,7 +35,7 @@ program main
       stats = simulation%get_stats()
       if (mod(i, 100000) == 0) write(*, "(I3.3, A)") i/100000, '%'
       write(12, "(E20.10, A2, I10)") simulation%time, event%action, event%selected_node
-      write(13, "(E20.10, E20.10, E20.10)") simulation%time, stats%rates%actual_infection_rate, stats%healthy_density
+      write(13, "(E20.10, E20.10, E20.10)") simulation%time, stats%rates%actual_infection_rate, stats%infected_density
       if (simulation%infected_nodes_count == simulation%net%nodes_count) then
          write(*, *) '100% infection reached'
          exit

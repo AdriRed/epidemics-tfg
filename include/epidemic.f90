@@ -120,13 +120,9 @@ contains
 
    integer(ik) function infect(this) result(chosen_link_idx)
       class(epidemic_simulation), intent(inout) :: this
-      integer :: origin_node_idx, node_to_infect_idx
       chosen_link_idx = int(grnd()*this%active_links_count, kind=ik)+1
 
-      origin_node_idx = this%active_links(chosen_link_idx, 1)
-      node_to_infect_idx = this%active_links(chosen_link_idx, 2)
-
-      write(*, *) 'I:', origin_node_idx, '->', node_to_infect_idx
+      write(*, *) 'I:', this%active_links(chosen_link_idx, 1), '->', this%active_links(chosen_link_idx, 2)
 
       call this%infect_node(chosen_link_idx)
    end function infect
@@ -134,7 +130,7 @@ contains
    integer(ik) function recover(this) result(chosen_node_idx)
       class(epidemic_simulation), intent(inout) :: this
       chosen_node_idx = int(grnd()*this%infected_nodes_count, kind=ik)+1
-      write(*, *) 'R:', chosen_node_idx
+      write(*, *) 'R:', this%infected_nodes(chosen_node_idx)
       call this%recover_node(chosen_node_idx)
    end function recover
 

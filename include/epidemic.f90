@@ -43,18 +43,19 @@ module epidemic
 
       integer(ik), allocatable :: neighbours_active_links_index(:)
    contains
+      procedure, public :: act
+      procedure, public :: get_stats
+      procedure, public :: infect_node
+      procedure, public :: set_infected_node
+      procedure, public :: recover_node
+      procedure, public :: clear
+      procedure, private :: infect
+      procedure, private :: recover
       procedure, private :: advance_time
       procedure, private :: remove_active_link
       procedure, private :: update_active_links_ptrs
       procedure, private :: add_active_link
       procedure, private :: calculate_actual_rates
-      procedure, public :: act
-      procedure, private :: infect
-      procedure, public :: infect_node
-      procedure, public :: set_infected_node
-      procedure, private :: recover
-      procedure, public :: recover_node
-      procedure, public :: get_stats
    end type epidemic_simulation
 
 contains
@@ -63,7 +64,7 @@ contains
       type(epidemic_net), intent(in) :: net
 
       retval%net = net
-      allocate(retval%active_links(net%links_count, 2), &
+      allocate(retval%active_links(2*net%links_count, 2), &
          retval%node_states(net%nodes_count), &
          retval%infected_nodes(net%nodes_count), &
          retval%neighbours_active_links_index(2*net%links_count))
@@ -75,6 +76,11 @@ contains
       retval%time = 0
       write(*,*) 'Initialized simulation'
    end function initialize_simulation
+
+   subroutine clear(this)
+      class(epidemic_simulation), intent(inout) :: this
+      deallocate(this%active_links, this%node_states, this%infected_nodes, this%neighbours_active_links_index)
+   end subroutine clear
 
    type(epidemic_step_event) function act(this) result(retval)
       class(epidemic_simulation), intent(inout) :: this
@@ -120,19 +126,20 @@ contains
       retval = tau
    end function advance_time
 
-   integer(ik) function infect(this) result(chosen_link_idx)
+   integer(ik) function infect(this) result(chosen_node)
       class(epidemic_simulation), intent(inout) :: this
+      integer(ik) :: chosen_link_idx
       chosen_link_idx = int(grnd()*this%active_links_count, kind=ik)+1
-
-      ! write(*, *) 'I:', this%active_links(chosen_link_idx, 1), '->', this%active_links(chosen_link_idx, 2)
+      chosen_node = this%active_links(chosen_link_idx, 2)
 
       call this%infect_node(chosen_link_idx)
    end function infect
 
-   integer(ik) function recover(this) result(chosen_node_idx)
+   integer(ik) function recover(this) result(chosen_node)
       class(epidemic_simulation), intent(inout) :: this
+      integer(ik) :: chosen_node_idx
       chosen_node_idx = int(grnd()*this%infected_nodes_count, kind=ik)+1
-      ! write(*, *) 'R:', this%infected_nodes(chosen_node_idx)
+      chosen_node = this%infected_nodes(chosen_node_idx)
       call this%recover_node(chosen_node_idx)
    end function recover
 
@@ -161,21 +168,25 @@ contains
          if (this%node_states(neighbor) == 1) then
             ! remove potential active links between node to infect and already infected node
             neighbor_link_idx = this%neighbours_active_links_index(i)
-            if (neighbor_link_idx .gt. 0 .and. neighbor_link_idx .le. this%active_links_count) then
-               if (this%active_links(neighbor_link_idx, 2) == node_to_infect_idx) then
-                  call this%remove_active_link(neighbor_link_idx)
-                  call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count+1)
+            if (neighbor_link_idx > 0 .and. neighbor_link_idx <= this%active_links_count) then
+               ! compute last BEFORE removal
+               if (neighbor_link_idx /= this%active_links_count) then
+                  call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count)
                end if
-            end if
-            ! do it backwards also
-            neighbor_link_idx = this%neighbours_active_links_index(this%net%neighbour_counterpart_ptrs(i))
-            if (neighbor_link_idx .gt. 0 .and. neighbor_link_idx .le. this%active_links_count)then
-               if (this%active_links(neighbor_link_idx, 2) == node_to_infect_idx) then
-                  call this%remove_active_link(neighbor_link_idx)
-                  call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count+1)
-               end if
+               call this%remove_active_link(neighbor_link_idx)
+               ! clear the mapping for this neighbour position
+               this%neighbours_active_links_index(i) = 0
             end if
 
+            ! counterpart (other direction)
+            neighbor_link_idx = this%neighbours_active_links_index(this%net%neighbour_counterpart_ptrs(i))
+            if (neighbor_link_idx > 0 .and. neighbor_link_idx <= this%active_links_count) then
+               if (neighbor_link_idx /= this%active_links_count) then
+                  call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count)
+               end if
+               call this%remove_active_link(neighbor_link_idx)
+               this%neighbours_active_links_index(this%net%neighbour_counterpart_ptrs(i)) = 0
+            end if
          elseif (this%node_states(neighbor) == 0) then
             ! add link between node to infect and node not infected
             neighbor_link_idx = this%add_active_link(node_to_infect_idx, neighbor)
@@ -226,17 +237,24 @@ contains
             neighbor_link_idx = this%add_active_link(neighbor, recovered_node)
             this%neighbours_active_links_index(this%net%neighbour_counterpart_ptrs(i)) = neighbor_link_idx
          elseif (this%node_states(neighbor) == 0) then
-            ! remove active link between two recovered nodes
+            ! remove active link between two recovered/susceptible nodes
             neighbor_link_idx = this%neighbours_active_links_index(i)
-            if (neighbor_link_idx .gt. 0 .and. neighbor_link_idx .le. this%active_links_count) then
+            if (neighbor_link_idx > 0 .and. neighbor_link_idx <= this%active_links_count) then
+               if (neighbor_link_idx /= this%active_links_count) then
+                  call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count)
+               end if
                call this%remove_active_link(neighbor_link_idx)
-               call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count+1)
+               this%neighbours_active_links_index(i) = 0
             end if
-            ! other way also
+
+            ! counterpart
             neighbor_link_idx = this%neighbours_active_links_index(this%net%neighbour_counterpart_ptrs(i))
-            if (neighbor_link_idx .gt. 0 .and. neighbor_link_idx .le. this%active_links_count) then
+            if (neighbor_link_idx > 0 .and. neighbor_link_idx <= this%active_links_count) then
+               if (neighbor_link_idx /= this%active_links_count) then
+                  call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count)
+               end if
                call this%remove_active_link(neighbor_link_idx)
-               call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count+1)
+               this%neighbours_active_links_index(this%net%neighbour_counterpart_ptrs(i)) = 0
             end if
          end if
       end do
@@ -272,8 +290,7 @@ contains
    subroutine remove_active_link(this, idx)
       class(epidemic_simulation), intent(inout) :: this
       integer(ik) :: idx
-      this%active_links(idx, 1) = this%active_links(this%active_links_count, 1)
-      this%active_links(idx, 2) = this%active_links(this%active_links_count, 2)
+      this%active_links(idx, :) = this%active_links(this%active_links_count, :)
       this%active_links_count = this%active_links_count - 1
    end subroutine remove_active_link
 

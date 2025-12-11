@@ -16,35 +16,66 @@ program main
 
    call init_genrand(42069)
 
-   open(unit=11, file='./ignore-files/large_twitch_edges.csv', action='read')
-   ! open(unit=11, file='./files/test-file-1.txt', action='read')
+   ! open(unit=11, file='./ignore-files/musae_git_edges.csv', action='read')
+   open(unit=11, file='./files/test-file-1.txt', action='read')
+   ! open(unit=11, file='./ignore-files/large_twitch_edges.csv', action='read')
    net = initialize_net(11)
    call net%hashmap%clear()
    close(unit=11)
 
-   simulation = initialize_simulation(net)
-   simulation%infection_rate = 0.1
-   simulation%recovery_rate = 0.07
+   call execute_simulation(net, 1.6_dp, 1._dp, int(1E9, kind=ik), 1)
 
-   write(12, *) 'I', 1
-   call simulation%set_infected_node(1)
-   open(unit=12, file='./builds/events.dat', action='write')
-   open(unit=13, file='./builds/stats.dat', action='write')
-   do i = 1, 10000000
-      event = simulation%act()
-      stats = simulation%get_stats()
-      if (mod(i, 100000) == 0) write(*, "(I3.3, A)") i/100000, '%'
-      write(12, "(E20.10, A2, I10)") simulation%time, event%action, event%selected_node
-      write(13, "(E20.10, E20.10, E20.10)") simulation%time, stats%rates%actual_infection_rate, stats%infected_density
-      if (simulation%infected_nodes_count == simulation%net%nodes_count) then
-         write(*, *) '100% infection reached'
-         exit
-      elseif (simulation%infected_nodes_count == 0) then
-         write(*, *) '100% health reached'
-         exit
+
+contains
+
+   subroutine execute_simulation(initialized_net, infection_rate, recovery_rate, limit_steps, output_file_steps)
+      class(epidemic_net), intent(inout) :: initialized_net
+      real(dp), intent(in) :: infection_rate, recovery_rate
+      integer(ik), intent(in) :: limit_steps, output_file_steps
+      character(70) :: name
+      integer(ik) :: percentage_steps
+      character(len=:), allocatable :: filename
+
+      percentage_steps = int(limit_steps/100_dp, kind=ik)
+
+      write(name, '(A,F12.9,A,F12.9)') 'I=', infection_rate, '-R=', recovery_rate
+      filename = trim(adjustl(name))
+      write(*, *) name
+      simulation = initialize_simulation(initialized_net)
+      simulation%infection_rate = infection_rate
+      simulation%recovery_rate = recovery_rate
+
+      open(unit=12, file='./output/events-'// filename //'.dat', action='write')
+      open(unit=13, file='./output/stats-'// filename //'.dat', action='write')
+      write(12, "(E20.10, A2, I10)") 0._dp, 'I', 1
+      call simulation%set_infected_node(1)
+      do i = 1, limit_steps
+         event = simulation%act()
+         if (mod(i, percentage_steps) == 0) write(*, "(I3.3, A)") i/percentage_steps, '%'
+         if (mod(i, output_file_steps) == 0) then
+            stats = simulation%get_stats()
+            write(12, "(E20.10, A2, I10)") simulation%time, event%action, event%selected_node
+            write(13, "(E20.10, E20.10, E20.10, E20.10)") simulation%time, &
+               stats%rates%actual_infection_rate, stats%rates%actual_recovery_rate, &
+               stats%infected_density
+         end if
+         if (simulation%infected_nodes_count == simulation%net%nodes_count) then
+            write(*, *) '100% infection reached'
+            exit
+         elseif (simulation%infected_nodes_count == 0) then
+            write(*, *) '100% health reached'
+            exit
+         end if
+      end do
+
+      if (mod(i, 100) /= 0) then
+         write(12, "(E20.10, A2, I10)") simulation%time, event%action, event%selected_node
+         write(13, "(E20.10, E20.10, E20.10, E20.10)") simulation%time, &
+            stats%rates%actual_infection_rate, stats%rates%actual_recovery_rate, stats%infected_density
       end if
-   end do
+      close(unit=12)
+      close(unit=13)
+      call simulation%clear()
+   end subroutine execute_simulation
 
-   close(unit=12)
-   close(unit=13)
 end program main

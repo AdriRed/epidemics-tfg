@@ -153,6 +153,9 @@ contains
       node_to_infect_idx = this%active_links(active_link_idx, 2)
       ! change node state
       this%node_states(node_to_infect_idx) = 1
+      if (active_link_idx /= this%active_links_count) then
+         call this%update_active_links_ptrs(active_link_idx, this%active_links_count)
+      end if
       ! swap with last active link
       call this%remove_active_link(active_link_idx)
       ! add to infected nodes

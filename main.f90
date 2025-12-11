@@ -17,13 +17,13 @@ program main
    call init_genrand(42069)
 
    ! open(unit=11, file='./ignore-files/musae_git_edges.csv', action='read')
-   open(unit=11, file='./files/test-file-1.txt', action='read')
-   ! open(unit=11, file='./ignore-files/large_twitch_edges.csv', action='read')
+   ! open(unit=11, file='./files/test-file-1.txt', action='read')
+   open(unit=11, file='./ignore-files/large_twitch_edges.csv', action='read')
    net = initialize_net(11)
    call net%hashmap%clear()
    close(unit=11)
 
-   call execute_simulation(net, 1.6_dp, 1._dp, int(1E9, kind=ik), 1)
+   call execute_simulation(net, 0.5_dp, 2.71_dp, int(1E7, kind=ik), 10000)
 
 
 contains
@@ -36,7 +36,7 @@ contains
       integer(ik) :: percentage_steps
       character(len=:), allocatable :: filename
 
-      percentage_steps = int(limit_steps/100_dp, kind=ik)
+      percentage_steps = int(real(limit_steps, kind=dp)/1.E2, kind=ik)
 
       write(name, '(A,F12.9,A,F12.9)') 'I=', infection_rate, '-R=', recovery_rate
       filename = trim(adjustl(name))
@@ -51,7 +51,7 @@ contains
       call simulation%set_infected_node(1)
       do i = 1, limit_steps
          event = simulation%act()
-         if (mod(i, percentage_steps) == 0) write(*, "(I3.3, A)") i/percentage_steps, '%'
+         if (mod(i,percentage_steps) == 0) write(*, "(I3.3, A)") i/percentage_steps, '%'
          if (mod(i, output_file_steps) == 0) then
             stats = simulation%get_stats()
             write(12, "(E20.10, A2, I10)") simulation%time, event%action, event%selected_node

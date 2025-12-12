@@ -272,8 +272,7 @@ contains
 
       do i = this%net%starter_ptrs(origin_node), this%net%end_ptrs(origin_node)
          if (this%neighbours_active_links_index(i) == old_idx) then
-            this%neighbours_active_links_index(i) = new_idx
-            exit   ! there is only one link with the reference out of bounds of array
+            this%neighbours_active_links_index(i) = new_idx   ! there is only one link with the reference out of bounds of array
          end if
       end do
 

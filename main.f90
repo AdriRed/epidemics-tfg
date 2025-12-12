@@ -12,29 +12,44 @@ program main
    type(epidemic_simulation) :: simulation
    type(epidemic_step_event) :: event
    type(epidemic_stats) :: stats
-   integer :: i
+   character(:), allocatable :: option
+   character(len=256) :: buf
+   real(dp) :: inf_rate, rec_rate
 
    call init_genrand(42069)
 
    ! open(unit=11, file='./ignore-files/musae_git_edges.csv', action='read')
    ! open(unit=11, file='./files/test-file-1.txt', action='read')
-   open(unit=11, file='./ignore-files/large_twitch_edges.csv', action='read')
+   ! open(unit=11, file='./ignore-files/large_twitch_edges.csv', action='read')
+   open(unit=11, file='./ignore-files/soc-epinions.mtx', action='read')
    net = initialize_net(11)
    call net%hashmap%clear()
    close(unit=11)
+   option = ' '
 
-   call execute_simulation(net, 0.5_dp, 2.71_dp, int(1E7, kind=ik), 10000)
+   do
+      write(*, *) 'Write stats in the following format: "{infection rate} {recovery rate}" or "E" to end'
+      read(*,'(A)') buf             ! lee la línea completa en option
+      option = trim(adjustl(buf))
+      if (option == 'E' .or. option == 'e') exit
+      write(*, "(A, A)") 'Using option: ', option
+      ! internal read desde la cadena option para obtener los números
+      read(option, *) inf_rate, rec_rate
+      call execute_simulation(net, inf_rate, rec_rate, int(1E7, kind=ik), 1000)
+   end do
 
 
 contains
 
    subroutine execute_simulation(initialized_net, infection_rate, recovery_rate, limit_steps, output_file_steps)
+      implicit none
       class(epidemic_net), intent(inout) :: initialized_net
       real(dp), intent(in) :: infection_rate, recovery_rate
       integer(ik), intent(in) :: limit_steps, output_file_steps
       character(70) :: name
-      integer(ik) :: percentage_steps
+      integer(ik) :: percentage_steps, i
       character(len=:), allocatable :: filename
+      logical :: has_duplicates
 
       percentage_steps = int(real(limit_steps, kind=dp)/1.E2, kind=ik)
 
@@ -49,8 +64,12 @@ contains
       open(unit=13, file='./output/stats-'// filename //'.dat', action='write')
       write(12, "(E20.10, A2, I10)") 0._dp, 'I', 1
       call simulation%set_infected_node(1)
-      do i = 1, limit_steps
+      do i = 0, limit_steps
          event = simulation%act()
+         ! if (i > 46450) then
+         ! call check_active_links_no_duplicates(simulation%active_links, &
+         !    simulation%active_links_count, has_duplicates)
+         ! end if
          if (mod(i,percentage_steps) == 0) write(*, "(I3.3, A)") i/percentage_steps, '%'
          if (mod(i, output_file_steps) == 0) then
             stats = simulation%get_stats()
@@ -68,14 +87,41 @@ contains
          end if
       end do
 
-      if (mod(i, 100) /= 0) then
-         write(12, "(E20.10, A2, I10)") simulation%time, event%action, event%selected_node
-         write(13, "(E20.10, E20.10, E20.10, E20.10)") simulation%time, &
-            stats%rates%actual_infection_rate, stats%rates%actual_recovery_rate, stats%infected_density
-      end if
+      ! if (mod(i, 100) /= 0) then
+      write(12, "(E20.10, A2, I10)") simulation%time, event%action, event%selected_node
+      write(13, "(E20.10, E20.10, E20.10, E20.10)") simulation%time, &
+         stats%rates%actual_infection_rate, stats%rates%actual_recovery_rate, stats%infected_density
+      ! end if
       close(unit=12)
       close(unit=13)
       call simulation%clear()
    end subroutine execute_simulation
+
+   subroutine check_active_links_no_duplicates(active_links, active_links_count, has_duplicates, dup_i, dup_j)
+      integer(ik), intent(in)  :: active_links(:, :)
+      integer(ik), intent(in)  :: active_links_count
+      logical,   intent(out)   :: has_duplicates
+      integer(ik), intent(out), optional :: dup_i, dup_j
+
+      integer(ik) :: i, j
+
+      has_duplicates = .false.
+      if (active_links_count <= 1) return
+
+      do i = 1, active_links_count - 1
+         do j = i + 1, active_links_count
+            if (active_links(i,1) == active_links(j,1) .and. &
+               active_links(i,2) == active_links(j,2)) then
+               has_duplicates = .true.
+               if (present(dup_i) .and. present(dup_j)) then
+                  dup_i = i
+                  dup_j = j
+               end if
+               write(*,*) 'Duplicate active_link pair at indices', i, 'and', j, ': (', &
+                  active_links(i,1), ',', active_links(i,2), ')'
+            end if
+         end do
+      end do
+   end subroutine check_active_links_no_duplicates
 
 end program main

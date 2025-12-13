@@ -11,17 +11,17 @@ program main
    type(epidemic_net) :: net
    type(epidemic_simulation) :: simulation
    type(epidemic_step_event) :: event
-   type(epidemic_stats) :: stats
+   type(epidemic_simulation_stats) :: stats
    character(:), allocatable :: option
    character(len=256) :: buf
    real(dp) :: inf_rate, rec_rate
 
    call init_genrand(42069)
 
-   ! open(unit=11, file='./ignore-files/musae_git_edges.csv', action='read')
+   open(unit=11, file='./ignore-files/musae_git_edges.csv', action='read')
    ! open(unit=11, file='./files/test-file-1.txt', action='read')
    ! open(unit=11, file='./ignore-files/large_twitch_edges.csv', action='read')
-   open(unit=11, file='./ignore-files/soc-epinions.mtx', action='read')
+   ! open(unit=11, file='./ignore-files/soc-epinions.mtx', action='read')
    net = initialize_net(11)
    call net%hashmap%clear()
    close(unit=11)

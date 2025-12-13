@@ -9,8 +9,18 @@ module net_loader
       type(int_int_hashmap) :: hashmap
    contains
       procedure, public :: get_neighbours_by_index
+      procedure, public :: get_stats
    end type epidemic_net
+
+   type epidemic_net_stats
+      integer(ik) :: nodes_count, links_count
+      real(dp) :: average_degree, average_degree_sqrd
+   end type epidemic_net_stats
 contains
+   type(epidemic_net_stats) function get_stats(this) result(retval)
+      class(epidemic_net), intent(inout) :: this
+      retval%
+   end function get_stats
 
    function get_neighbours_by_index(this, node_index) result(retval)
       integer(ik), allocatable:: retval(:)
@@ -20,6 +30,8 @@ contains
       retval = this%neighbours(this%starter_ptrs(node_index):this%end_ptrs(node_index))
    end function get_neighbours_by_index
 
+
+   
 
 
    type(epidemic_net) function initialize_net(unit) result(net)

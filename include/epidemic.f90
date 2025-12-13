@@ -20,11 +20,11 @@ module epidemic
       real(dp) elapsed_time
    end type epidemic_step_event
 
-   type epidemic_stats
+   type epidemic_simulation_stats
       real(dp) infected_density
       real(dp) healthy_density
       type(epidemic_rates) rates
-   end type epidemic_stats
+   end type epidemic_simulation_stats
 
    type epidemic_simulation
       type(epidemic_net) net
@@ -96,7 +96,7 @@ contains
       end if
    end function act
 
-   type(epidemic_stats) function get_stats(this) result(retval)
+   type(epidemic_simulation_stats) function get_stats(this) result(retval)
       class(epidemic_simulation), intent(inout) :: this
       retval%rates = this%actual_rates
       retval%infected_density = real(this%infected_nodes_count) / this%net%nodes_count
@@ -105,8 +105,8 @@ contains
 
    subroutine calculate_actual_rates(this)
       class(epidemic_simulation), intent(inout) :: this
-      this%actual_rates%actual_infection_rate = this%active_links_count*this%infection_rate
-      this%actual_rates%actual_recovery_rate= this%infected_nodes_count*this%recovery_rate
+      this%actual_rates%actual_infection_rate = this%active_links_count*this%infection_rate/1000
+      this%actual_rates%actual_recovery_rate= this%infected_nodes_count*this%recovery_rate/1000
       this%actual_rates%total_rate = this%actual_rates%actual_infection_rate + this%actual_rates%actual_recovery_rate
    end subroutine calculate_actual_rates
 

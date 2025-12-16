@@ -7,7 +7,7 @@ set xlabel "Time (d)"
 set ylabel "Rate"
 set y2label "Infected ratio (%)"
 set grid x y
-
+set title sprintf("I=%f, R=%f", infection_rate, recovery_rate)
 set ytics nomirror
 set y2tics
 set tics out
@@ -18,7 +18,7 @@ set key center top
 # set y2range [0:100]
 
 set format x "%.0f"
-set xtics 10
+set xtics 1
 day = 86400.0
 file = sprintf('output/stats-I= %.9f-R= %.9f.dat', infection_rate, recovery_rate)
 

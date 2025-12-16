@@ -64,10 +64,10 @@ contains
       type(epidemic_net), intent(in) :: net
 
       retval%net = net
-      allocate(retval%active_links(2*net%links_count, 2), &
-         retval%node_states(net%nodes_count), &
-         retval%infected_nodes(net%nodes_count), &
-         retval%neighbours_active_links_index(2*net%links_count))
+      allocate(retval%active_links(2*net%stats%links_count, 2), &
+         retval%node_states(net%stats%nodes_count), &
+         retval%infected_nodes(net%stats%nodes_count), &
+         retval%neighbours_active_links_index(2*net%stats%links_count))
 
       retval%active_links(:, :) = 0
       retval%node_states(:) = 0
@@ -99,7 +99,7 @@ contains
    type(epidemic_simulation_stats) function get_stats(this) result(retval)
       class(epidemic_simulation), intent(inout) :: this
       retval%rates = this%actual_rates
-      retval%infected_density = real(this%infected_nodes_count) / this%net%nodes_count
+      retval%infected_density = real(this%infected_nodes_count) / this%net%stats%nodes_count
       retval%healthy_density = 1-retval%infected_density
    end function get_stats
 

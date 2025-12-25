@@ -14,9 +14,9 @@ program main
    character(len=256) :: buf
    real(dp), allocatable :: rates(:,:)
    integer(ik) :: i, j
-   allocate(rates(28, 3))
+   allocate(rates(832, 3))
 
-   do i = 0, 3
+   do i = 0, 105
       do j = 1, 7
          rates(i*7+j, 1) = 0.6+0.1*j
          rates(i*7+j, 2) = 0.6+0.1*j
@@ -49,7 +49,7 @@ program main
    ! end do
 
    !$omp parallel do private(i) schedule(dynamic)
-   do i = 1, 28
+   do i = 1, 832
       call execute_simulation(net, rates(i, 1), rates(i, 2), int(1E7, kind=ik), 1000, 10+i, int(rates(i, 3), kind=ik))
    end do
    !$omp end parallel do

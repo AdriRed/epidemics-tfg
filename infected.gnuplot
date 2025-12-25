@@ -13,8 +13,9 @@ set key left top
 # set y2range [0:100]
 
 set format x "%.0f"
-set xtics 1
-set xrange [0: 2]
+set xtics 10
+set logscale y
+# set xrange [0: 10]
 day = 86400.0
 
 # Si el fichero tiene una cabecera de 1 línea, usamos every ::1 para saltarla.

@@ -13,15 +13,18 @@ program main
    character(:), allocatable :: option
    character(len=256) :: buf
    real(dp), allocatable :: rates(:,:)
-   integer(ik) :: i
-   allocate(rates(7, 2))
+   integer(ik) :: i, j
+   allocate(rates(28, 3))
 
-   rates = reshape((/ &
-      1., 1.1, 1.2, 0.9, 0.8, 1.5, 0.5 ,&
-      1., 1.1, 1.2, 0.9, 0.8, 1.5, 0.5 &
-      /), shape(rates))
+   do i = 0, 3
+      do j = 1, 7
+         rates(i*7+j, 1) = 0.6+0.1*j
+         rates(i*7+j, 2) = 0.6+0.1*j
+         rates(i*7+j, 3) = 42069 + i
+      end do
+   end do
 
-   call init_genrand(42069)
+
 
    open(unit=11, file='./ignore-files/musae_git_edges.csv', action='read')
    ! open(unit=11, file='./files/test-file-1.txt', action='read')
@@ -46,17 +49,18 @@ program main
    ! end do
 
    !$omp parallel do private(i) schedule(dynamic)
-   do i = 1, 7
-      call execute_simulation(net, rates(i, 1), rates(i, 2), int(1E6, kind=ik), 10, 10+i)
+   do i = 1, 28
+      call execute_simulation(net, rates(i, 1), rates(i, 2), int(1E7, kind=ik), 1000, 10+i, int(rates(i, 3), kind=ik))
    end do
    !$omp end parallel do
 contains
 
-   subroutine execute_simulation(initialized_net, infection_rate, recovery_rate, limit_steps, output_file_steps, unit)
+   subroutine execute_simulation(initialized_net, infection_rate, recovery_rate, &
+      limit_steps, output_file_steps, unit, seed)
       implicit none
       class(epidemic_net), intent(in) :: initialized_net
       real(dp), intent(in) :: infection_rate, recovery_rate
-      integer(ik), intent(in) :: limit_steps, output_file_steps, unit
+      integer(ik), intent(in) :: limit_steps, output_file_steps, unit, seed
       character(70) :: name
       integer(ik) :: percentage_steps, i_step
       character(len=:), allocatable :: filename
@@ -66,14 +70,14 @@ contains
 
       percentage_steps = int(real(limit_steps, kind=dp)/1.E2, kind=ik)
 
-      write(name, '(A,F10.5,A,F10.5)') 'I=', infection_rate, '-R=', recovery_rate
+      write(name, '(A,F10.5,A,F10.5,A,I5)') 'I=', infection_rate, '-R=', recovery_rate, '-S=', seed
       filename = trim(adjustl(name))
       ! $omp critical(name_write)
       write(*, *) name
       ! $omp end critical(name_write)
 
 
-      simulation = initialize_simulation(initialized_net)
+      simulation = initialize_simulation(initialized_net, seed)
       simulation%infection_rate = infection_rate
       simulation%recovery_rate = recovery_rate
 
@@ -87,8 +91,8 @@ contains
 
          if (mod(i_step,percentage_steps) == 0) then
             ! $omp critical(output)
-            write(*, "(A, F4.2, A, F4.2, A, I3.3, A)") &
-               'I=',infection_rate, 'R=',recovery_rate, ' - ', i_step/percentage_steps, '%'
+            write(*, "(A, F4.2, A, F4.2, A, I5, A, I3.3, A)") &
+               'I=',infection_rate, ', R=',recovery_rate, ', S=', seed, ' - ', i_step/percentage_steps, '%'
             ! $omp end critical(output)
 
          end if

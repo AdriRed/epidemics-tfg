@@ -1,6 +1,6 @@
 module epidemic
    use net_loader
-   use mt19937
+   use mt19937_par
    use iso_fortran_env, only: int8, int32, real64
    implicit none
 
@@ -29,7 +29,7 @@ module epidemic
    type epidemic_simulation
       type(epidemic_net) net
       type(epidemic_rates) actual_rates
-
+      
       real(dp) :: infection_rate = 0.0, recovery_rate= 0.0
       real(dp) :: time = 0.0
 
@@ -42,6 +42,8 @@ module epidemic
       integer(bk), allocatable :: node_states(:)
 
       integer(ik), allocatable :: neighbours_active_links_index(:)
+
+      type(mt19937_state) :: rnd
    contains
       procedure, public :: act
       procedure, public :: get_stats
@@ -60,8 +62,9 @@ module epidemic
 
 contains
 
-   type(epidemic_simulation) function initialize_simulation(net) result(retval)
+   type(epidemic_simulation) function initialize_simulation(net, seed) result(retval)
       type(epidemic_net), intent(in) :: net
+      integer(ik), intent(in) :: seed
 
       retval%net = net
       allocate(retval%active_links(2*net%stats%links_count, 2), &
@@ -69,6 +72,7 @@ contains
          retval%infected_nodes(net%stats%nodes_count), &
          retval%neighbours_active_links_index(2*net%stats%links_count))
 
+      call retval%rnd%init_genrand(seed)
       retval%active_links(:, :) = 0
       retval%node_states(:) = 0
       retval%infected_nodes(:) = 0
@@ -86,7 +90,7 @@ contains
       class(epidemic_simulation), intent(inout) :: this
       real(dp) :: numb
       retval%elapsed_time = this%advance_time()
-      numb = grnd()*this%actual_rates%total_rate
+      numb = this%rnd%grnd()*this%actual_rates%total_rate
       if (numb < this%actual_rates%actual_infection_rate) then
          retval%selected_node = this%infect()
          retval%action = 'I'
@@ -117,8 +121,8 @@ contains
       found = .false.
       call this%calculate_actual_rates()
       do while (.not. found)
-         tau = grnd()
-         test = grnd()
+         tau = this%rnd%grnd()
+         test = this%rnd%grnd()
          distr = this%actual_rates%total_rate*exp(-this%actual_rates%total_rate*tau)
          found = test .ge. distr
       end do
@@ -129,7 +133,7 @@ contains
    integer(ik) function infect(this) result(chosen_node)
       class(epidemic_simulation), intent(inout) :: this
       integer(ik) :: chosen_link_idx
-      chosen_link_idx = int(grnd()*this%active_links_count, kind=ik)+1
+      chosen_link_idx = int(this%rnd%grnd()*this%active_links_count, kind=ik)+1
       chosen_node = this%active_links(chosen_link_idx, 2)
 
       call this%infect_node(chosen_link_idx)
@@ -138,7 +142,7 @@ contains
    integer(ik) function recover(this) result(chosen_node)
       class(epidemic_simulation), intent(inout) :: this
       integer(ik) :: chosen_node_idx
-      chosen_node_idx = int(grnd()*this%infected_nodes_count, kind=ik)+1
+      chosen_node_idx = int(this%rnd%grnd()*this%infected_nodes_count, kind=ik)+1
       chosen_node = this%infected_nodes(chosen_node_idx)
       call this%recover_node(chosen_node_idx)
    end function recover

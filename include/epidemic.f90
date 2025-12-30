@@ -155,8 +155,7 @@ contains
       integer(ik) :: i
       origin_node_idx = this%active_links(active_link_idx, 1)
       node_to_infect_idx = this%active_links(active_link_idx, 2)
-      ! change node state
-      this%node_states(node_to_infect_idx) = 1
+      
       if (active_link_idx /= this%active_links_count) then
          call this%update_active_links_ptrs(active_link_idx, this%active_links_count)
       end if
@@ -165,12 +164,28 @@ contains
       ! add to infected nodes
       this%infected_nodes_count = this%infected_nodes_count+1
       this%infected_nodes(this%infected_nodes_count) = node_to_infect_idx
+      
+      call this%set_infected_node(node_to_infect_idx, origin_node_idx)
 
+   end subroutine infect_node
+
+   subroutine set_infected_node(this, node_to_infect_idx, origin_node_idx)
+      class(epidemic_simulation), intent(inout) :: this
+      integer(ik), intent(in) :: node_to_infect_idx
+      integer(ik), intent(inout), optional :: origin_node_idx
+      integer(ik) :: neighbor, i, neighbor_link_idx
+
+      logical :: present_value
+
+      present_value = present(origin_node_idx)
+      ! change node state
+      this%node_states(node_to_infect_idx) = 1
+      
       ! foreach neighbour
       do i = this%net%starter_ptrs(node_to_infect_idx), this%net%end_ptrs(node_to_infect_idx)
          neighbor = this%net%neighbours(i)
 
-         if (neighbor == origin_node_idx) cycle
+         if (present_value .and. neighbor == origin_node_idx) cycle
 
          if (this%node_states(neighbor) == 1) then
             ! remove potential active links between node to infect and already infected node
@@ -195,28 +210,6 @@ contains
                this%neighbours_active_links_index(this%net%neighbour_counterpart_ptrs(i)) = 0
             end if
          elseif (this%node_states(neighbor) == 0) then
-            ! add link between node to infect and node not infected
-            neighbor_link_idx = this%add_active_link(node_to_infect_idx, neighbor)
-            this%neighbours_active_links_index(i) = neighbor_link_idx
-         end if
-      end do
-
-   end subroutine infect_node
-
-   subroutine set_infected_node(this, node_to_infect_idx)
-      class(epidemic_simulation), intent(inout) :: this
-      integer(ik), intent(in) :: node_to_infect_idx
-      integer(ik) :: neighbor, i, neighbor_link_idx
-      ! set infected state
-      this%node_states(node_to_infect_idx) = 1
-      ! add to infected nodes list
-      this%infected_nodes_count = this%infected_nodes_count+1
-      this%infected_nodes(this%infected_nodes_count) = node_to_infect_idx
-
-      ! foreach neighbour
-      do i = this%net%starter_ptrs(node_to_infect_idx), this%net%end_ptrs(node_to_infect_idx)
-         neighbor = this%net%neighbours(i)
-         if (this%node_states(neighbor) == 0) then
             ! add link between node to infect and node not infected
             neighbor_link_idx = this%add_active_link(node_to_infect_idx, neighbor)
             this%neighbours_active_links_index(i) = neighbor_link_idx

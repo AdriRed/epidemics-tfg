@@ -13,20 +13,23 @@ program main
    character(:), allocatable :: option
    character(len=256) :: buf
    real(dp), allocatable :: rates(:,:)
-   integer(ik) :: i, j
-   allocate(rates(832, 3))
+   integer(ik) :: i, j, rate_size
 
-   do i = 0, 105
-      do j = 1, 7
-         rates(i*7+j, 1) = 0.6+0.1*j
-         rates(i*7+j, 2) = 0.6+0.1*j
-         rates(i*7+j, 3) = 42069 + i
-      end do
+   rate_size = 1024
+
+   allocate(rates(rate_size, 3))
+   rates(:, 1) =0.08
+   rates(:, 2) =0.01
+   do i = 1, rate_size
+      ! do j = 0, 7
+         rates(i, 3) = 42069 + i
+      ! end do
    end do
 
 
 
-   open(unit=11, file='./ignore-files/musae_git_edges.csv', action='read')
+   ! open(unit=11, file='./ignore-files/musae_git_edges.csv', action='read')
+   open(unit=11, file='./ignore-files/ia-infect-dublin.mtx', action='read')
    ! open(unit=11, file='./files/test-file-1.txt', action='read')
    ! open(unit=11, file='./ignore-files/large_twitch_edges.csv', action='read')
    ! open(unit=11, file='./ignore-files/soc-epinions.mtx', action='read')
@@ -49,8 +52,8 @@ program main
    ! end do
 
    !$omp parallel do private(i) schedule(dynamic)
-   do i = 1, 832
-      call execute_simulation(net, rates(i, 1), rates(i, 2), int(1E7, kind=ik), 1000, 10+i, int(rates(i, 3), kind=ik))
+   do i = 1, rate_size
+      call execute_simulation(net, rates(i, 1), rates(i, 2), int(1E7, kind=ik), 100, 10+i, int(rates(i, 3), kind=ik))
    end do
    !$omp end parallel do
 contains
@@ -96,13 +99,14 @@ contains
             ! $omp end critical(output)
 
          end if
-         if (mod(i_step, output_file_steps) == 0) then
+
+         if (output_file_steps == 1 .or. mod(i_step, output_file_steps) == 0) then
             stats = simulation%get_stats()
-            ! $omp critical(file_write)
+            !$omp critical(file_write)
             write(unit, "(E20.10, E20.10, E20.10, E20.10)") simulation%time, &
                stats%rates%actual_infection_rate, stats%rates%actual_recovery_rate, &
                stats%infected_density
-            ! $omp end critical(file_write)
+            !$omp end critical(file_write)
          end if
 
          if (simulation%infected_nodes_count == simulation%net%stats%nodes_count) then

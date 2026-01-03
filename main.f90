@@ -106,6 +106,7 @@ contains
             write(unit, "(E20.10, E20.10, E20.10, E20.10)") simulation%time, &
                stats%rates%actual_infection_rate, stats%rates%actual_recovery_rate, &
                stats%infected_density
+            flush(unit)
             !$omp end critical(file_write)
          end if
 

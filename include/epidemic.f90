@@ -109,25 +109,37 @@ contains
 
    subroutine calculate_actual_rates(this)
       class(epidemic_simulation), intent(inout) :: this
-      this%actual_rates%actual_infection_rate = this%active_links_count*this%infection_rate/1000
-      this%actual_rates%actual_recovery_rate= this%infected_nodes_count*this%recovery_rate/1000
+      this%actual_rates%actual_infection_rate = this%active_links_count*this%infection_rate
+      this%actual_rates%actual_recovery_rate= this%infected_nodes_count*this%recovery_rate
       this%actual_rates%total_rate = this%actual_rates%actual_infection_rate + this%actual_rates%actual_recovery_rate
    end subroutine calculate_actual_rates
 
    real(dp) function advance_time(this) result(retval)
+      ! class(epidemic_simulation), intent(inout) :: this
+      ! real(dp) :: tau, test, distr
+      ! logical :: found
+      ! found = .false.
+      ! call this%calculate_actual_rates()
+      ! do while (.not. found)
+      !    tau = this%rnd%grnd()
+      !    test = this%rnd%grnd()
+      !    distr = this%actual_rates%total_rate*exp(-this%actual_rates%total_rate*tau)
+      !    found = test .le. distr ! gillespielle will mark as valid when test <= distr
+      ! end do
+      ! this%time = this%time + tau
+      ! retval = tau
+
       class(epidemic_simulation), intent(inout) :: this
-      real(dp) :: tau, test, distr
-      logical :: found
-      found = .false.
+      real(dp) :: u, R
+
       call this%calculate_actual_rates()
-      do while (.not. found)
-         tau = this%rnd%grnd()
-         test = this%rnd%grnd()
-         distr = this%actual_rates%total_rate*exp(-this%actual_rates%total_rate*tau)
-         found = test .le. distr ! gillespielle will mark as valid when test <= distr
-      end do
-      this%time = this%time + tau
-      retval = tau
+      R = this%actual_rates%total_rate
+
+      ! Gillespie: tiempo al siguiente evento
+      u = max(this%rnd%grnd(), epsilon(real(1.0, kind=dp)))
+      retval = -log(u) / R
+
+      this%time = this%time + retval
    end function advance_time
 
    integer(ik) function infect(this) result(chosen_node)

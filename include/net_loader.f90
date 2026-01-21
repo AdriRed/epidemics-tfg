@@ -54,13 +54,20 @@ contains
          net%end_ptrs(net%stats%nodes_count), &
          net%degree(net%stats%nodes_count))
 
+      net%neighbour_counterpart_ptrs(:) = 0
+      net%neighbours(:) = 0
+      net%starter_ptrs(:) = 0
+      net%end_ptrs(:) = 0
+      net%degree(:) = 0
+      
+
       call init_degrees_pointers(unit, net)
       write(*, *) 'Initialized degrees and pointers'
 
       call init_neighbours(unit, net)
       write(*, *) 'Initialized neighbour array'
 
-      call clean_repeated_negibours(net)
+      call clean_repeated_neighbours(net)
       write(*, *) 'Cleaned neighbours. Reduced neighbours by ', net%stats%links_count-initial_links
 
       call calculate_stats(net)
@@ -193,7 +200,7 @@ contains
       end do
    end subroutine init_neighbours
 
-   subroutine clean_repeated_negibours(net)
+   subroutine clean_repeated_neighbours(net)
       type(epidemic_net), intent(inout) :: net
       integer(ik) :: i, j, k
       integer(ik) :: startp, endp, curr_neigh
@@ -236,6 +243,6 @@ contains
 
          net%end_ptrs(i) = endp
       end do
-   end subroutine clean_repeated_negibours
+   end subroutine clean_repeated_neighbours
 
 end module net_loader

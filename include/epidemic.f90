@@ -124,7 +124,7 @@ contains
          tau = this%rnd%grnd()
          test = this%rnd%grnd()
          distr = this%actual_rates%total_rate*exp(-this%actual_rates%total_rate*tau)
-         found = test .ge. distr
+         found = test .le. distr ! gillespielle will mark as valid when test <= distr
       end do
       this%time = this%time + tau
       retval = tau

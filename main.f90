@@ -20,8 +20,8 @@ program main
    allocate(rates(rate_size, 3))
    do i = 1, 100
       do j = 1, 100
-         rates((i-1)*100+j, 1) = 0.1*i
-         rates((i-1)*100+j, 2) = 10
+         rates((i-1)*100+j, 1) = 0.01*i
+         rates((i-1)*100+j, 2) = 1
          rates((i-1)*100+j, 3) = j
       end do
    end do
@@ -130,6 +130,8 @@ contains
             exit
          end if
       end do
+      
+      stats = simulation%get_stats()
 
       ! if (mod(i, 100) /= 0) then
       ! $omp critical(file_write)

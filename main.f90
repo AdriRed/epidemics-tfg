@@ -15,21 +15,19 @@ program main
    real(dp), allocatable :: rates(:,:)
    integer(ik) :: i, j, rate_size
 
-   rate_size = 1024
+   rate_size = 10000
 
    allocate(rates(rate_size, 3))
-   rates(:, 1) =0.08
-   rates(:, 2) =0.01
-   do i = 1, rate_size
-      ! do j = 0, 7
-         rates(i, 3) = 42069 + i
-      ! end do
+   do i = 1, 100
+      do j = 1, 100
+         rates((i-1)*100+j, 1) = 0.1*i
+         rates((i-1)*100+j, 2) = 10
+         rates((i-1)*100+j, 3) = j
+      end do
    end do
 
-
-
-   ! open(unit=11, file='./ignore-files/musae_git_edges.csv', action='read')
-   open(unit=11, file='./ignore-files/ia-infect-dublin.mtx', action='read')
+   open(unit=11, file='./ignore-files/musae_git_edges.csv', action='read')
+   ! open(unit=11, file='./ignore-files/ia-infect-dublin.mtx', action='read')
    ! open(unit=11, file='./files/test-file-1.txt', action='read')
    ! open(unit=11, file='./ignore-files/large_twitch_edges.csv', action='read')
    ! open(unit=11, file='./ignore-files/soc-epinions.mtx', action='read')
@@ -53,17 +51,20 @@ program main
 
    !$omp parallel do private(i) schedule(dynamic)
    do i = 1, rate_size
-      call execute_simulation(net, rates(i, 1), rates(i, 2), int(1E7, kind=ik), 100, 10+i, int(rates(i, 3), kind=ik))
+      call execute_simulation(net, rates(i, 1), rates(i, 2), int(1E6, kind=ik), 100, 10+i, &
+         int(rates(i, 3), kind=ik), real(1E-10, kind=dp))
    end do
    !$omp end parallel do
 contains
 
    subroutine execute_simulation(initialized_net, infection_rate, recovery_rate, &
-      limit_steps, output_file_steps, unit, seed)
+      limit_steps, output_file_steps, unit, seed, epsilon)
       implicit none
       class(epidemic_net), intent(in) :: initialized_net
-      real(dp), intent(in) :: infection_rate, recovery_rate
+      real(dp), intent(in) :: infection_rate, recovery_rate, epsilon
       integer(ik), intent(in) :: limit_steps, output_file_steps, unit, seed
+      real(dp) :: last_density
+
       character(70) :: name
       integer(ik) :: percentage_steps, i_step
       character(len=:), allocatable :: filename
@@ -87,7 +88,7 @@ contains
       ! $omp critical(file_write)
       open(unit=unit, file='./output/stats-'// filename //'.dat', action='write')
       ! $omp end critical(file_write)
-
+      last_density = -1.
       call simulation%set_infected_node(1)
       do i_step = 0, limit_steps
          event = simulation%act()
@@ -99,7 +100,7 @@ contains
             ! $omp end critical(output)
 
          end if
-
+         ! write(*, *) 'Last density difference = ', last_density-stats%infected_density
          if (output_file_steps == 1 .or. mod(i_step, output_file_steps) == 0) then
             stats = simulation%get_stats()
             !$omp critical(file_write)
@@ -108,8 +109,15 @@ contains
                stats%infected_density
             flush(unit)
             !$omp end critical(file_write)
-         end if
 
+            if (abs(last_density-stats%infected_density) < epsilon) then
+               write(*, *) 'Stationary state reached, density: ',  stats%infected_density
+               exit
+            end if
+
+            last_density = stats%infected_density
+
+         end if
          if (simulation%infected_nodes_count == simulation%net%stats%nodes_count) then
             ! $omp critical(output)
             write(*, *) '100% infection reached'

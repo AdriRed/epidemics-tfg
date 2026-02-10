@@ -174,8 +174,6 @@ contains
       ! swap with last active link
       call this%remove_active_link(active_link_idx)
       ! add to infected nodes
-      this%infected_nodes_count = this%infected_nodes_count+1
-      this%infected_nodes(this%infected_nodes_count) = node_to_infect_idx
       
       call this%set_infected_node(node_to_infect_idx, origin_node_idx)
 
@@ -193,11 +191,15 @@ contains
       ! change node state
       this%node_states(node_to_infect_idx) = 1
       
+      this%infected_nodes_count = this%infected_nodes_count+1
+      this%infected_nodes(this%infected_nodes_count) = node_to_infect_idx
       ! foreach neighbour
       do i = this%net%starter_ptrs(node_to_infect_idx), this%net%end_ptrs(node_to_infect_idx)
          neighbor = this%net%neighbours(i)
-
-         if (present_value .and. neighbor == origin_node_idx) cycle
+         
+         if (present_value) then
+            if (neighbor == origin_node_idx) cycle
+         end if
 
          if (this%node_states(neighbor) == 1) then
             ! remove potential active links between node to infect and already infected node

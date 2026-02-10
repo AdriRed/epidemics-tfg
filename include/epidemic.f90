@@ -32,15 +32,20 @@ module epidemic
       
       real(dp) :: infection_rate = 0.0, recovery_rate= 0.0
       real(dp) :: time = 0.0
-
+      ! lista de nodos infectados
       integer(ik), allocatable :: infected_nodes(:)
       integer(ik) :: infected_nodes_count = 0
-
+      ! lista de links activos (linx entre un nodo infectado y otro no infectado)
       integer(ik), allocatable :: active_links(:, :)
       integer(ik) :: active_links_count = 0
-
+      ! estados de nodos
       integer(bk), allocatable :: node_states(:)
 
+      ! lista de indices de active_links a los cuales hace referencia el mismo elemento de vecinos
+      ! active_links                  = [4-3][1-2]
+      ! neighbours                    = [2][3]|[1]|[1][4]|[3][5]...
+      ! neighbours_active_links_index = [2][ ]|[ ]|[ ][ ]|[1][ ]...
+      ! posición coincidente con neighbours y referencia a índice de active_links
       integer(ik), allocatable :: neighbours_active_links_index(:)
 
       type(mt19937_state) :: rnd
@@ -51,13 +56,13 @@ module epidemic
       procedure, public :: set_infected_node
       procedure, public :: recover_node
       procedure, public :: clear
+      procedure, public :: calculate_actual_rates
       procedure, private :: infect
       procedure, private :: recover
       procedure, private :: advance_time
       procedure, private :: remove_active_link
       procedure, private :: update_active_links_ptrs
       procedure, private :: add_active_link
-      procedure, private :: calculate_actual_rates
    end type epidemic_simulation
 
 contains
@@ -91,10 +96,15 @@ contains
       real(dp) :: numb
       retval%elapsed_time = this%advance_time()
       numb = this%rnd%grnd()*this%actual_rates%total_rate
+      write(*, *) "Choosen random ", numb
+      write(*, *) "Rates INF = ", this%actual_rates%actual_infection_rate
+      write(*, *) "Rates REC = ", this%actual_rates%actual_recovery_rate
       if (numb < this%actual_rates%actual_infection_rate) then
+         write(*, *) "INFECTION"
          retval%selected_node = this%infect()
          retval%action = 'I'
       else
+         write(*, *) "RECOVERY"
          retval%selected_node = this%recover()
          retval%action = 'R'
       end if
@@ -142,6 +152,8 @@ contains
       this%time = this%time + retval
    end function advance_time
 
+   ! infects a random node
+   ! returns: the selected node index
    integer(ik) function infect(this) result(chosen_node)
       class(epidemic_simulation), intent(inout) :: this
       integer(ik) :: chosen_link_idx
@@ -159,22 +171,22 @@ contains
       call this%recover_node(chosen_node_idx)
    end function recover
 
+   ! infects a targeted node given by the first parameter
    subroutine infect_node(this, active_link_idx)
       class(epidemic_simulation), intent(inout) :: this
       integer(ik), intent(in) :: active_link_idx
-      integer(ik) :: neighbor_link_idx, neighbor
       integer(ik) :: origin_node_idx, node_to_infect_idx
-      integer(ik) :: i
-      origin_node_idx = this%active_links(active_link_idx, 1)
-      node_to_infect_idx = this%active_links(active_link_idx, 2)
+      ! selection of the active links
+      origin_node_idx = this%active_links(active_link_idx, 1) ! the infected node
+      node_to_infect_idx = this%active_links(active_link_idx, 2) ! the node to infect
       
+      ! if selected active_index is not the last
       if (active_link_idx /= this%active_links_count) then
          call this%update_active_links_ptrs(active_link_idx, this%active_links_count)
       end if
       ! swap with last active link
       call this%remove_active_link(active_link_idx)
       ! add to infected nodes
-      
       call this%set_infected_node(node_to_infect_idx, origin_node_idx)
 
    end subroutine infect_node
@@ -186,9 +198,12 @@ contains
       integer(ik) :: neighbor, i, neighbor_link_idx
 
       logical :: present_value
-
+      
       present_value = present(origin_node_idx)
       ! change node state
+      if (this%node_states(node_to_infect_idx) == 1) then
+         write(*, *) "WARNING - Infecting already infected node"
+      end if
       this%node_states(node_to_infect_idx) = 1
       
       this%infected_nodes_count = this%infected_nodes_count+1
@@ -237,6 +252,9 @@ contains
       integer(ik), intent(in) :: recovered_idx
       integer(ik) :: neighbor_link_idx, i, recovered_node, neighbor
       recovered_node = this%infected_nodes(recovered_idx)
+      if (this%node_states(recovered_node) == 0) then
+         write(*, *) "WARNING - Recovering already recovered node"
+      end if
       ! change node state
       this%node_states(recovered_node) = 0
       ! remove infected node
@@ -274,6 +292,8 @@ contains
       end do
    end subroutine recover_node
 
+   
+   ! hace swap de dos 
    subroutine update_active_links_ptrs(this, new_idx, old_idx)
       class(epidemic_simulation), intent(inout) :: this
       integer(ik), intent(in) :: new_idx, old_idx
@@ -281,9 +301,12 @@ contains
 
       origin_node = this%active_links(old_idx, 1)
 
+      ! para cada uno de los vecinos de un nodo
       do i = this%net%starter_ptrs(origin_node), this%net%end_ptrs(origin_node)
+         ! si el vecino apunta al index antiguo
          if (this%neighbours_active_links_index(i) == old_idx) then
-            this%neighbours_active_links_index(i) = new_idx   ! there is only one link with the reference out of bounds of array
+            ! haz que apunte al nuevo index
+            this%neighbours_active_links_index(i) = new_idx   
          end if
       end do
 

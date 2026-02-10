@@ -30,32 +30,40 @@ program main
 
    ! delta
    simulation%recovery_rate = 1
+   simulation%infection_rate = 1
+
+   write(*, *) "SIMULATION INITIAL RATES"
+   call simulation%calculate_actual_rates()
+   stats = simulation%get_stats()
+   write(*, *) "Actual infection rate ", stats%rates%actual_infection_rate
+   write(*, *) "Actual recovery rate ", stats%rates%actual_recovery_rate
 
    eval_time = 0.
    time_limit = 432.
-   open(unit=12, file='test.dat', action='write')
-   do i = 100, 1, -1
-      ! lambda
-      simulation%infection_rate = real(i, kind=dp)/100.
-      write(*, *) "Starting for infection rate = ", simulation%infection_rate
-      j = 1
-      do while (eval_time < time_limit)
+   
+   ! open(unit=12, file='test.dat', action='write')
+   ! do i = 100, 1, -1
+   !    ! lambda
+   !    simulation%infection_rate = real(i, kind=dp)/100.
+   !    write(*, *) "Starting for infection rate = ", simulation%infection_rate
+   !    j = 1
+   !    do while (eval_time < time_limit)
 
-         event = simulation%act()
-         eval_time = eval_time + event%elapsed_time
-         stats = simulation%get_stats()
+   !       event = simulation%act()
+   !       eval_time = eval_time + event%elapsed_time
+   !       stats = simulation%get_stats()
 
-         if (mod(j, 100) == 0) write(12, *) simulation%time, simulation%infection_rate, &
-            stats%infected_density
+   !       if (mod(j, 100) == 0) write(12, *) simulation%time, simulation%infection_rate, &
+   !          stats%infected_density
          
-         write(*, *) "Infection rate = ", simulation%infection_rate, ", Time = ", simulation%time, &
-            ", Density = ", stats%infected_density
-         j = j+1
-      end do
-      eval_time = eval_time - time_limit
+   !       write(*, *) "Infection rate = ", simulation%infection_rate, ", Time = ", simulation%time, &
+   !          ", Density = ", stats%infected_density
+   !       j = j+1
+   !    end do
+   !    eval_time = eval_time - time_limit
 
-   end do
-   close(12)
+   ! end do
+   ! close(12)
 
 
 

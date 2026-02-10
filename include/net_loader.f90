@@ -183,7 +183,7 @@ contains
       rewind(unit)
       do
          read(unit, *, iostat=iostat) node_a, node_b
-         if (iostat <0) exit
+         if (iostat < 0) exit
 
          if (node_a == node_b) cycle ! skip autolinks
 

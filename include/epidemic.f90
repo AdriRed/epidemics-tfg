@@ -95,6 +95,7 @@ contains
    type(epidemic_step_event) function act(this) result(retval)
       class(epidemic_simulation), intent(inout) :: this
       real(dp) :: numb
+      call this%calculate_actual_rates()
       retval%elapsed_time = this%advance_time()
       numb = this%rnd%grnd()*this%actual_rates%total_rate
       if (numb < this%actual_rates%actual_infection_rate) then
@@ -121,29 +122,12 @@ contains
    end subroutine calculate_actual_rates
 
    real(dp) function advance_time(this) result(retval)
-      ! class(epidemic_simulation), intent(inout) :: this
-      ! real(dp) :: tau, test, distr
-      ! logical :: found
-      ! found = .false.
-      ! call this%calculate_actual_rates()
-      ! do while (.not. found)
-      !    tau = this%rnd%grnd()
-      !    test = this%rnd%grnd()
-      !    distr = this%actual_rates%total_rate*exp(-this%actual_rates%total_rate*tau)
-      !    found = test .le. distr ! gillespielle will mark as valid when test <= distr
-      ! end do
-      ! this%time = this%time + tau
-      ! retval = tau
-
       class(epidemic_simulation), intent(inout) :: this
-      real(dp) :: u, R
-
-      call this%calculate_actual_rates()
-      R = this%actual_rates%total_rate
+      real(dp) :: u
 
       ! Gillespie: tiempo al siguiente evento
       u = max(this%rnd%grnd(), epsilon(real(1.0, kind=dp)))
-      retval = -log(u) / R
+      retval = -log(u) / this%actual_rates%total_rate
 
       this%time = this%time + retval
    end function advance_time
@@ -260,30 +244,31 @@ contains
       ! foreach neighbour
       do i = this%net%starter_ptrs(recovered_node), this%net%end_ptrs(recovered_node)
          neighbor = this%net%neighbours(i)
-         if (this%node_states(neighbor) == 1) then
-            ! add as active link with the self recovered node
+         if (this%node_states(neighbor) == 1) then ! if neighbor is infected
+            ! add as active link from the neigbor to the recovered node
             neighbor_link_idx = this%add_active_link(neighbor, recovered_node)
+            ! add the link id in the active links index using the reciprocal counterpart pointer
             this%neighbours_active_links_index(this%net%neighbour_counterpart_ptrs(i)) = neighbor_link_idx
-         elseif (this%node_states(neighbor) == 0) then
-            ! remove active link between two recovered/susceptible nodes
-            neighbor_link_idx = this%neighbours_active_links_index(i)
-            if (neighbor_link_idx > 0 .and. neighbor_link_idx <= this%active_links_count) then
-               if (neighbor_link_idx /= this%active_links_count) then
-                  call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count)
-               end if
-               call this%remove_active_link(neighbor_link_idx)
-               this%neighbours_active_links_index(i) = 0
-            end if
+         ! elseif (this%node_states(neighbor) == 0) then ! if neighbor is not infected
+         !    ! remove active link between two recovered/susceptible nodes
+         !    neighbor_link_idx = this%neighbours_active_links_index(i)
+         !    if (neighbor_link_idx > 0 .and. neighbor_link_idx <= this%active_links_count) then
+         !       if (neighbor_link_idx /= this%active_links_count) then
+         !          call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count)
+         !       end if
+         !       call this%remove_active_link(neighbor_link_idx)
+         !       this%neighbours_active_links_index(i) = 0
+         !    end if
 
-            ! counterpart
-            neighbor_link_idx = this%neighbours_active_links_index(this%net%neighbour_counterpart_ptrs(i))
-            if (neighbor_link_idx > 0 .and. neighbor_link_idx <= this%active_links_count) then
-               if (neighbor_link_idx /= this%active_links_count) then
-                  call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count)
-               end if
-               call this%remove_active_link(neighbor_link_idx)
-               this%neighbours_active_links_index(this%net%neighbour_counterpart_ptrs(i)) = 0
-            end if
+         !    ! counterpart
+         !    neighbor_link_idx = this%neighbours_active_links_index(this%net%neighbour_counterpart_ptrs(i))
+         !    if (neighbor_link_idx > 0 .and. neighbor_link_idx <= this%active_links_count) then
+         !       if (neighbor_link_idx /= this%active_links_count) then
+         !          call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count)
+         !       end if
+         !       call this%remove_active_link(neighbor_link_idx)
+         !       this%neighbours_active_links_index(this%net%neighbour_counterpart_ptrs(i)) = 0
+         !    end if
          end if
       end do
    end subroutine recover_node

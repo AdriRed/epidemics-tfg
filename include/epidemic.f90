@@ -29,7 +29,7 @@ module epidemic
    type epidemic_simulation
       type(epidemic_net) net
       type(epidemic_rates) actual_rates
-      
+
       real(dp) :: infection_rate = 0.0, recovery_rate= 0.0
       real(dp) :: time = 0.0
       ! lista de nodos infectados
@@ -57,6 +57,7 @@ module epidemic
       procedure, public :: recover_node
       procedure, public :: clear
       procedure, public :: calculate_actual_rates
+      procedure, public :: verify_consistency
       procedure, private :: infect
       procedure, private :: recover
       procedure, private :: advance_time
@@ -96,15 +97,10 @@ contains
       real(dp) :: numb
       retval%elapsed_time = this%advance_time()
       numb = this%rnd%grnd()*this%actual_rates%total_rate
-      write(*, *) "Choosen random ", numb
-      write(*, *) "Rates INF = ", this%actual_rates%actual_infection_rate
-      write(*, *) "Rates REC = ", this%actual_rates%actual_recovery_rate
       if (numb < this%actual_rates%actual_infection_rate) then
-         write(*, *) "INFECTION"
          retval%selected_node = this%infect()
          retval%action = 'I'
       else
-         write(*, *) "RECOVERY"
          retval%selected_node = this%recover()
          retval%action = 'R'
       end if
@@ -179,7 +175,7 @@ contains
       ! selection of the active links
       origin_node_idx = this%active_links(active_link_idx, 1) ! the infected node
       node_to_infect_idx = this%active_links(active_link_idx, 2) ! the node to infect
-      
+
       ! if selected active_index is not the last
       if (active_link_idx /= this%active_links_count) then
          call this%update_active_links_ptrs(active_link_idx, this%active_links_count)
@@ -198,20 +194,20 @@ contains
       integer(ik) :: neighbor, i, neighbor_link_idx
 
       logical :: present_value
-      
+
       present_value = present(origin_node_idx)
       ! change node state
       if (this%node_states(node_to_infect_idx) == 1) then
          write(*, *) "WARNING - Infecting already infected node"
       end if
       this%node_states(node_to_infect_idx) = 1
-      
+
       this%infected_nodes_count = this%infected_nodes_count+1
       this%infected_nodes(this%infected_nodes_count) = node_to_infect_idx
       ! foreach neighbour
       do i = this%net%starter_ptrs(node_to_infect_idx), this%net%end_ptrs(node_to_infect_idx)
          neighbor = this%net%neighbours(i)
-         
+
          if (present_value) then
             if (neighbor == origin_node_idx) cycle
          end if
@@ -306,7 +302,7 @@ contains
          ! si el vecino apunta al index antiguo
          if (this%neighbours_active_links_index(i) == old_idx) then
             ! haz que apunte al nuevo index
-            this%neighbours_active_links_index(i) = new_idx   
+            this%neighbours_active_links_index(i) = new_idx
          end if
       end do
 
@@ -331,6 +327,272 @@ contains
    end subroutine remove_active_link
 
 
+   subroutine verify_consistency(this)
+      class(epidemic_simulation), intent(inout) :: this
+      integer(ik) :: i, j, origin, target, ptr_idx, neighbour_idx
+      integer(ik) :: count_infected_in_array, count_infected_in_states
+      logical :: found
 
+      ! ============================================
+      ! 1. Verificar coherencia de infected_nodes
+      ! ============================================
+
+      ! Contar nodos en estado infectado
+      count_infected_in_states = count(this%node_states == 1)
+
+      if (count_infected_in_states /= this%infected_nodes_count) then
+         write(*, *) 'ERROR: Infected count mismatch!'
+         write(*, *) '  Nodes with state=1:', count_infected_in_states
+         write(*, *) '  infected_nodes_count:', this%infected_nodes_count
+         stop
+      end if
+
+      ! Verificar que todos los nodos en infected_nodes están realmente infectados
+      do i = 1, this%infected_nodes_count
+         if (this%infected_nodes(i) < 1 .or. this%infected_nodes(i) > this%net%stats%nodes_count) then
+            write(*, *) 'ERROR: Invalid node index in infected_nodes!'
+            write(*, *) '  Position:', i
+            write(*, *) '  Node index:', this%infected_nodes(i)
+            stop
+         end if
+
+         if (this%node_states(this%infected_nodes(i)) /= 1) then
+            write(*, *) 'ERROR: Node in infected_nodes is not infected!'
+            write(*, *) '  Position:', i
+            write(*, *) '  Node index:', this%infected_nodes(i)
+            write(*, *) '  State:', this%node_states(this%infected_nodes(i))
+            stop
+         end if
+      end do
+
+      ! Verificar que no hay duplicados en infected_nodes
+      do i = 1, this%infected_nodes_count
+         do j = i+1, this%infected_nodes_count
+            if (this%infected_nodes(i) == this%infected_nodes(j)) then
+               write(*, *) 'ERROR: Duplicate in infected_nodes!'
+               write(*, *) '  Positions:', i, j
+               write(*, *) '  Node:', this%infected_nodes(i)
+               stop
+            end if
+         end do
+      end do
+
+      ! ============================================
+      ! 2. Verificar coherencia de active_links
+      ! ============================================
+
+      do i = 1, this%active_links_count
+         origin = this%active_links(i, 1)
+         target = this%active_links(i, 2)
+
+         ! Verificar índices válidos
+         if (origin < 1 .or. origin > this%net%stats%nodes_count) then
+            write(*, *) 'ERROR: Invalid origin node in active_link!'
+            write(*, *) '  Link index:', i
+            write(*, *) '  Origin:', origin
+            stop
+         end if
+
+         if (target < 1 .or. target > this%net%stats%nodes_count) then
+            write(*, *) 'ERROR: Invalid target node in active_link!'
+            write(*, *) '  Link index:', i
+            write(*, *) '  Target:', target
+            stop
+         end if
+
+         ! Verificar que el origen está infectado
+         if (this%node_states(origin) /= 1) then
+            write(*, *) 'ERROR: Active link origin not infected!'
+            write(*, *) '  Link index:', i
+            write(*, *) '  Origin node:', origin
+            write(*, *) '  Origin state:', this%node_states(origin)
+            stop
+         end if
+
+         ! Verificar que el destino es susceptible
+         if (this%node_states(target) /= 0) then
+            write(*, *) 'ERROR: Active link target not susceptible!'
+            write(*, *) '  Link index:', i
+            write(*, *) '  Target node:', target
+            write(*, *) '  Target state:', this%node_states(target)
+            stop
+         end if
+
+         ! Verificar que origin y target son vecinos en la red
+         found = .false.
+         do j = this%net%starter_ptrs(origin), this%net%end_ptrs(origin)
+            if (this%net%neighbours(j) == target) then
+               found = .true.
+               exit
+            end if
+         end do
+
+         if (.not. found) then
+            write(*, *) 'ERROR: Active link between non-neighbours!'
+            write(*, *) '  Link index:', i
+            write(*, *) '  Origin:', origin
+            write(*, *) '  Target:', target
+            stop
+         end if
+      end do
+
+      ! Verificar que no hay duplicados en active_links
+      do i = 1, this%active_links_count
+         do j = i+1, this%active_links_count
+            if (this%active_links(i, 1) == this%active_links(j, 1) .and. &
+               this%active_links(i, 2) == this%active_links(j, 2)) then
+               write(*, *) 'ERROR: Duplicate active link!'
+               write(*, *) '  Positions:', i, j
+               write(*, *) '  Origin:', this%active_links(i, 1)
+               write(*, *) '  Target:', this%active_links(i, 2)
+               stop
+            end if
+         end do
+      end do
+
+      ! ============================================
+      ! 3. Verificar neighbours_active_links_index
+      ! ============================================
+
+      do i = 1, this%net%stats%nodes_count
+         do j = this%net%starter_ptrs(i), this%net%end_ptrs(i)
+            ptr_idx = this%neighbours_active_links_index(j)
+            neighbour_idx = this%net%neighbours(j)
+
+            if (ptr_idx > 0) then
+               ! Si hay un puntero, debe ser válido
+               if (ptr_idx > this%active_links_count) then
+                  write(*, *) 'ERROR: neighbours_active_links_index out of bounds!'
+                  write(*, *) '  Node:', i
+                  write(*, *) '  Neighbour position:', j
+                  write(*, *) '  Neighbour:', neighbour_idx
+                  write(*, *) '  Pointer:', ptr_idx
+                  write(*, *) '  active_links_count:', this%active_links_count
+                  stop
+               end if
+
+               ! El enlace debe existir entre node i y su vecino
+               if (this%active_links(ptr_idx, 1) /= i .or. &
+                  this%active_links(ptr_idx, 2) /= neighbour_idx) then
+                  write(*, *) 'ERROR: neighbours_active_links_index points to wrong link!'
+                  write(*, *) '  Node:', i
+                  write(*, *) '  Neighbour:', neighbour_idx
+                  write(*, *) '  Pointer:', ptr_idx
+                  write(*, *) '  Link origin:', this%active_links(ptr_idx, 1)
+                  write(*, *) '  Link target:', this%active_links(ptr_idx, 2)
+                  stop
+               end if
+            end if
+         end do
+      end do
+
+      ! ============================================
+      ! 4. Verificar que TODOS los enlaces activos tienen punteros
+      ! ============================================
+
+      do i = 1, this%active_links_count
+         origin = this%active_links(i, 1)
+         target = this%active_links(i, 2)
+         found = .false.
+
+         ! Buscar el puntero en neighbours_active_links_index
+         do j = this%net%starter_ptrs(origin), this%net%end_ptrs(origin)
+            if (this%net%neighbours(j) == target) then
+               if (this%neighbours_active_links_index(j) == i) then
+                  found = .true.
+                  exit
+               end if
+            end if
+         end do
+
+         if (.not. found) then
+            write(*, *) 'ERROR: Active link has no pointer in neighbours_active_links_index!'
+            write(*, *) '  Link index:', i
+            write(*, *) '  Origin:', origin
+            write(*, *) '  Target:', target
+            ! Mostrar qué punteros tiene el origen
+            write(*, *) '  Pointers from origin:'
+            do j = this%net%starter_ptrs(origin), this%net%end_ptrs(origin)
+               write(*, *) '    Neighbour:', this%net%neighbours(j), &
+                  ' Ptr:', this%neighbours_active_links_index(j)
+            end do
+            stop
+         end if
+      end do
+
+      ! ============================================
+      ! 5. Verificar coherencia de los rates
+      ! ============================================
+
+      call this%calculate_actual_rates()
+
+      if (this%actual_rates%actual_infection_rate /= &
+         this%active_links_count * this%infection_rate) then
+         write(*, *) 'ERROR: actual_infection_rate inconsistent!'
+         write(*, *) '  actual_infection_rate:', this%actual_rates%actual_infection_rate
+         write(*, *) '  active_links_count * infection_rate:', &
+            this%active_links_count * this%infection_rate
+         stop
+      end if
+
+      if (this%actual_rates%actual_recovery_rate /= &
+         this%infected_nodes_count * this%recovery_rate) then
+         write(*, *) 'ERROR: actual_recovery_rate inconsistent!'
+         write(*, *) '  actual_recovery_rate:', this%actual_rates%actual_recovery_rate
+         write(*, *) '  infected_nodes_count * recovery_rate:', &
+            this%infected_nodes_count * this%recovery_rate
+         stop
+      end if
+
+      ! ============================================
+      ! 6. Verificar que no hay enlaces "fantasma"
+      ! ============================================
+
+      ! Para cada nodo infectado, verificar que tiene los enlaces activos correctos
+      do i = 1, this%infected_nodes_count
+         origin = this%infected_nodes(i)
+
+         ! Contar cuántos enlaces activos debería tener
+         do j = this%net%starter_ptrs(origin), this%net%end_ptrs(origin)
+            neighbour_idx = this%net%neighbours(j)
+
+            if (this%node_states(neighbour_idx) == 0) then
+               ! Debería haber un enlace activo
+               ptr_idx = this%neighbours_active_links_index(j)
+
+               if (ptr_idx == 0 .or. ptr_idx > this%active_links_count) then
+                  write(*, *) 'ERROR: Missing active link for infected-susceptible pair!'
+                  write(*, *) '  Infected node:', origin
+                  write(*, *) '  Susceptible neighbour:', neighbour_idx
+                  write(*, *) '  Pointer value:', ptr_idx
+                  stop
+               end if
+            elseif (this%node_states(neighbour_idx) == 1) then
+               ! NO debería haber enlace activo
+               ptr_idx = this%neighbours_active_links_index(j)
+
+               if (ptr_idx > 0 .and. ptr_idx <= this%active_links_count) then
+                  write(*, *) 'ERROR: Active link between two infected nodes!'
+                  write(*, *) '  Infected node 1:', origin
+                  write(*, *) '  Infected node 2:', neighbour_idx
+                  write(*, *) '  Pointer:', ptr_idx
+                  stop
+               end if
+            end if
+         end do
+      end do
+
+      ! ============================================
+      ! 7. Estadísticas de debugging
+      ! ============================================
+
+      write(*, *) '--- Consistency Check Passed ---'
+      write(*, *) '  Time:', this%time
+      write(*, *) '  Infected nodes:', this%infected_nodes_count
+      write(*, *) '  Active links:', this%active_links_count
+      write(*, *) '  Infection rate:', this%actual_rates%actual_infection_rate
+      write(*, *) '  Recovery rate:', this%actual_rates%actual_recovery_rate
+
+   end subroutine verify_consistency
 
 end module epidemic

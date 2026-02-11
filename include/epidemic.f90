@@ -96,6 +96,13 @@ contains
       class(epidemic_simulation), intent(inout) :: this
       real(dp) :: numb
       call this%calculate_actual_rates()
+      
+      if (this%actual_rates%total_rate == 0.) then 
+         retval%selected_node = -1
+         retval%action = 'E'
+         return
+      end if
+
       retval%elapsed_time = this%advance_time()
       numb = this%rnd%grnd()*this%actual_rates%total_rate
       if (numb < this%actual_rates%actual_infection_rate) then

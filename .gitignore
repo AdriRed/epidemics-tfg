@@ -44,6 +44,7 @@
 # built files:
 **/builds/*
 **/output/*
+**/output*/*
 
 # ignored files:
 **/ignore-files/*

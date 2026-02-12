@@ -168,7 +168,7 @@ contains
       origin_node_idx = this%active_links(active_link_idx, 1)
       node_to_infect_idx = this%active_links(active_link_idx, 2)
 
-      ! Verificar consistencia
+      ! easy verification
       if (this%node_states(origin_node_idx) /= 1 .or. &
          this%node_states(node_to_infect_idx) /= 0) then
          write(*,*) "ERROR in infect_node: Invalid state combination"
@@ -177,8 +177,9 @@ contains
          stop
       end if
 
-      ! Eliminar el enlace activo que causó la infección
-      ! Primero encontrar y anular los punteros que apuntan a este enlace
+      ! delete the active selected link
+
+      ! remove neighbour's active link pointer 
       do i = this%net%starter_ptrs(origin_node_idx), this%net%end_ptrs(origin_node_idx)
          if (this%neighbours_active_links_index(i) == active_link_idx) then
             this%neighbours_active_links_index(i) = 0
@@ -186,16 +187,13 @@ contains
          end if
       end do
 
-      ! Si no es el último enlace, mover el último a esta posición
+      ! if not last active link in list, override this position with last active link
       if (active_link_idx /= this%active_links_count) then
-         ! Actualizar punteros del enlace que se mueve
          call this%update_active_links_ptrs(active_link_idx, this%active_links_count)
       end if
 
-      ! Eliminar el enlace
       call this%remove_active_link(active_link_idx)
 
-      ! Ahora infectar el nodo
       call this%set_infected_node(node_to_infect_idx, origin_node_idx)
 
    end subroutine infect_node
@@ -204,53 +202,58 @@ contains
       class(epidemic_simulation), intent(inout) :: this
       integer(ik), intent(in) :: node_to_infect_idx
       integer(ik), intent(inout), optional :: origin_node_idx
-      integer(ik) :: neighbor, i, j, neighbor_link_idx, counterpart_idx
+      integer(ik) :: neighbor, i, j, neighbor_link_idx
       logical :: present_value
 
       present_value = present(origin_node_idx)
 
-      ! Verificar que el nodo no esté ya infectado
+      ! easy verification
       if (this%node_states(node_to_infect_idx) == 1) then
          write(*, *) "ERROR in set_infected_node: Node already infected"
          write(*, *) "  Node:", node_to_infect_idx
          stop
       end if
 
-      ! Cambiar estado del nodo
+      ! change status
       this%node_states(node_to_infect_idx) = 1
 
-      ! Añadir a lista de infectados
+      ! add to infected nodes list
       this%infected_nodes_count = this%infected_nodes_count + 1
       this%infected_nodes(this%infected_nodes_count) = node_to_infect_idx
 
-      ! Para cada vecino del nuevo infectado
+      ! foreach neigbour of the infected node
       do i = this%net%starter_ptrs(node_to_infect_idx), this%net%end_ptrs(node_to_infect_idx)
          neighbor = this%net%neighbours(i)
 
-         ! Saltar el vecino que causó la infección (si se proporciona)
+         ! if node was infected from other node skip original node
          if (present_value) then
             if(neighbor == origin_node_idx) cycle
          end if
 
+         ! if neighbour of infected node is also infected
          if (this%node_states(neighbor) == 1) then
-            ! Vecino infectado: eliminar cualquier enlace activo entre ellos
-            ! Buscar enlace activo desde el vecino hacia el nuevo infectado
+
+            ! search for any active link
             do j = this%net%starter_ptrs(neighbor), this%net%end_ptrs(neighbor)
+               ! if current neighbour link is against the infected node
                if (this%net%neighbours(j) == node_to_infect_idx) then
                   neighbor_link_idx = this%neighbours_active_links_index(j)
+                  ! if current neighbour link is valid
                   if (neighbor_link_idx > 0 .and. neighbor_link_idx <= this%active_links_count) then
-                     ! Eliminar este enlace activo
+                     ! if current neighbour link is not last update all pointers
                      if (neighbor_link_idx /= this%active_links_count) then
                         call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count)
                      end if
+                     ! remove active link
                      call this%remove_active_link(neighbor_link_idx)
+                     ! reset index
                      this%neighbours_active_links_index(j) = 0
                   end if
                   exit
                end if
             end do
 
-            ! También buscar enlace activo desde el nuevo infectado hacia el vecino (no debería existir)
+            ! fast check for inverse links (should not exist, warning included)
             neighbor_link_idx = this%neighbours_active_links_index(i)
             if (neighbor_link_idx > 0 .and. neighbor_link_idx <= this%active_links_count) then
                write(*,*) "WARNING: Active link between two infected nodes found"
@@ -261,8 +264,8 @@ contains
                this%neighbours_active_links_index(i) = 0
             end if
 
-         elseif (this%node_states(neighbor) == 0) then
-            ! Vecino susceptible: añadir enlace activo desde el nuevo infectado
+         elseif (this%node_states(neighbor) == 0) then ! if neighbor is not infected
+            ! add to infection list
             neighbor_link_idx = this%add_active_link(node_to_infect_idx, neighbor)
             this%neighbours_active_links_index(i) = neighbor_link_idx
          end if
@@ -277,7 +280,7 @@ contains
 
       recovered_node = this%infected_nodes(recovered_idx)
 
-      ! Verificar que el nodo está infectado
+      ! easy check
       if (this%node_states(recovered_node) /= 1) then
          write(*, *) "ERROR in recover_node: Node not infected"
          write(*, *) "  Node:", recovered_node
@@ -285,42 +288,41 @@ contains
          stop
       end if
 
-      ! Cambiar estado a susceptible
+      ! change status
       this%node_states(recovered_node) = 0
 
-      ! Eliminar de lista de infectados (swap con último)
+      ! remove from infected list (swap with last)
       this%infected_nodes(recovered_idx) = this%infected_nodes(this%infected_nodes_count)
       this%infected_nodes_count = this%infected_nodes_count - 1
 
-      ! Paso 1: Eliminar todos los enlaces activos que TENÍAN AL NODO RECUPERADO COMO ORIGEN
-      ! (es decir, cuando estaba infectado y tenía vecinos susceptibles)
+      ! remove active links from the recovered node
       do i = this%net%starter_ptrs(recovered_node), this%net%end_ptrs(recovered_node)
          link_idx = this%neighbours_active_links_index(i)
+         ! if link is valid
          if (link_idx > 0 .and. link_idx <= this%active_links_count) then
-            ! Verificar que este enlace activo realmente existe y es correcto
+            ! check consistency
             if (this%active_links(link_idx, 1) == recovered_node .and. &
                this%active_links(link_idx, 2) == this%net%neighbours(i)) then
-               ! Eliminar este enlace activo
+               ! remove active link
                if (link_idx /= this%active_links_count) then
                   call this%update_active_links_ptrs(link_idx, this%active_links_count)
                end if
                call this%remove_active_link(link_idx)
             end if
-            ! Anular el puntero
+            ! reset index
             this%neighbours_active_links_index(i) = 0
          end if
       end do
 
-      ! Paso 2: Para cada vecino infectado, añadir enlace activo DESDE EL VECINO HACIA EL NODO RECUPERADO
+      ! add active link from infected nodes to recovered node
       do i = this%net%starter_ptrs(recovered_node), this%net%end_ptrs(recovered_node)
          neighbor = this%net%neighbours(i)
-
+         ! if neighbour is infected
          if (this%node_states(neighbor) == 1) then
-            ! El vecino está infectado, añadir enlace activo desde el vecino hacia el nodo recuperado
-            ! Primero encontrar la posición en la lista de vecinos del vecino que apunta al nodo recuperado
+            ! search for link between neighbour and active link
             do j = this%net%starter_ptrs(neighbor), this%net%end_ptrs(neighbor)
                if (this%net%neighbours(j) == recovered_node) then
-                  ! Añadir nuevo enlace activo
+                  ! add active link and exit loop
                   link_idx = this%add_active_link(neighbor, recovered_node)
                   this%neighbours_active_links_index(j) = link_idx
                   exit
@@ -332,7 +334,7 @@ contains
    end subroutine recover_node
 
 
-   ! hace swap de dos
+   ! update nodes to new link
    subroutine update_active_links_ptrs(this, new_idx, old_idx)
       class(epidemic_simulation), intent(inout) :: this
       integer(ik), intent(in) :: new_idx, old_idx

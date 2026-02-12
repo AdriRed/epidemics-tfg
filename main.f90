@@ -47,7 +47,7 @@ program main
    !          write(12, *) simulation%time, simulation%infection_rate, &
    !          stats%infected_density
    !       end if
-         
+
    !       write(*, "(A, F5.3, A, F10.5, A, F5.3)") "Infection rate = ", simulation%infection_rate, ", Time = ", simulation%time, &
    !          ", Density = ", stats%infected_density
    !    end do
@@ -65,7 +65,14 @@ program main
    ! !$omp end parallel do
    ! close(12)
 
-   call execute_simulation(net, real(0.3, dp), real(1., dp), 21, 2, real(1000, dp), SIR_MODEL)
+   
+   !$omp parallel do private(i, j) schedule(dynamic) collapse(2)
+   do i = 1, 100
+      do j = 1, 30
+         call execute_simulation(net, real(i*2, dp)/100, real(1., dp), i*100+j, 42069+j, real(100, dp), SIR_MODEL)
+      end do
+   end do
+   !$omp end parallel do
 
 contains
 
@@ -89,8 +96,8 @@ contains
       else if (model_type == SIS_MODEL) then
          write(name, '(A, A,F10.5,A,F10.5,A,I5)') 'SIS-I=', infection_rate, '-R=', recovery_rate, '-S=', seed
       end if
-      
-         filename = trim(adjustl(name))
+
+      filename = trim(adjustl(name))
       !$omp critical(name_write)
       write(*, *) name
       !$omp end critical(name_write)
@@ -104,33 +111,35 @@ contains
 
       sim%infection_rate = infection_rate
       sim%recovery_rate = recovery_rate
-
+      i_sim = 0
       !$omp critical(file_write)
       open(unit=unit, file='./output/stats-'// filename //'.dat', action='write')
       !$omp end critical(file_write)
       do
          sim_event = sim%act()
-
-         if (sim_event%action == 'E') then
-            write(*, '(A,F10.5,A,I5,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=dead'
-            exit
-         end if
-         write(*, '(A,F10.5,A,I5,A,F10.5)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=',sim%time
          sim_stats = sim%get_stats()
+
          !$omp critical(file_write)
          write(unit, "(E20.10, E20.10, E20.10, E20.10, E20.10)") sim%time, &
             sim_stats%rates%actual_infection_rate, sim_stats%rates%actual_recovery_rate, &
             sim_stats%infected_density, sim_stats%recovered_density
          !$omp end critical(file_write)
 
+         if (sim_event%action == 'E') then
+            write(*, '(A,F10.5,A,I5,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=dead'
+            exit
+         end if
+         write(*, '(A,F10.5,A,I5,A,F10.5)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=',sim%time
+
          if (sim%time > limit_time) then
             write(*, '(A,F10.5,A,I5,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=max'
             exit
          end if
+
       end do
-
-
+      !$omp critical(file_write)
       close(unit=unit)
+      !$omp end critical(file_write)
       call sim%clear()
    end subroutine execute_simulation
 end program main

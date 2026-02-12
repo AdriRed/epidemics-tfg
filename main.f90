@@ -20,41 +20,41 @@ program main
    call net%hashmap%clear()
    call net%print_stats()
    close(unit=11)
-   simulation = initialize_simulation(net, 42069)
 
+   ! simulation = initialize_simulation(net, 42069, SIS_MODEL)
    ! set all nodes infected
-   do i = 1, net%stats%nodes_count
-      call simulation%set_infected_node(i)
-   end do
-   eval_time = 0.
-   time_limit = 2.
-   relax_time = 0.5
-   ! delta
-   simulation%recovery_rate = 1
-   simulation%infection_rate = 1
-   open(unit=12, file='density_by_rate.dat', action='write')
-   do i = 100, 1, -1
-      ! lambda
-      simulation%infection_rate = real(i, kind=dp)/100.
-      write(*, *) "Starting for infection rate = ", simulation%infection_rate
-      do while (eval_time < time_limit)
+   ! do i = 1, net%stats%nodes_count
+   !    call simulation%set_infected_node(i)
+   ! end do
+   ! eval_time = 0.
+   ! time_limit = 2.
+   ! relax_time = 0.5
+   ! ! delta
+   ! simulation%recovery_rate = 1
+   ! simulation%infection_rate = 1
+   ! open(unit=12, file='density_by_rate.dat', action='write')
+   ! do i = 100, 1, -1
+   !    ! lambda
+   !    simulation%infection_rate = real(i, kind=dp)/100.
+   !    write(*, *) "Starting for infection rate = ", simulation%infection_rate
+   !    do while (eval_time < time_limit)
 
-         event = simulation%act()
-         eval_time = eval_time + event%elapsed_time
-         stats = simulation%get_stats()
-         ! call simulation%verify_consistency()
-         if (relax_time < eval_time) then
-            write(12, *) simulation%time, simulation%infection_rate, &
-            stats%infected_density
-         end if
+   !       event = simulation%act()
+   !       eval_time = eval_time + event%elapsed_time
+   !       stats = simulation%get_stats()
+   !       ! call simulation%verify_consistency()
+   !       if (relax_time < eval_time) then
+   !          write(12, *) simulation%time, simulation%infection_rate, &
+   !          stats%infected_density
+   !       end if
          
-         write(*, "(A, F5.3, A, F10.5, A, F5.3)") "Infection rate = ", simulation%infection_rate, ", Time = ", simulation%time, &
-            ", Density = ", stats%infected_density
-      end do
-      eval_time = eval_time - time_limit
+   !       write(*, "(A, F5.3, A, F10.5, A, F5.3)") "Infection rate = ", simulation%infection_rate, ", Time = ", simulation%time, &
+   !          ", Density = ", stats%infected_density
+   !    end do
+   !    eval_time = eval_time - time_limit
 
-   end do
-   close(12)
+   ! end do
+   ! close(12)
 
 
 
@@ -65,17 +65,17 @@ program main
    ! !$omp end parallel do
    ! close(12)
 
-
+   call execute_simulation(net, real(0.3, dp), real(1., dp), 21, 2, real(1000, dp), SIR_MODEL)
 
 contains
 
    subroutine execute_simulation(initialized_net, infection_rate, recovery_rate, &
-      skip_output_time, unit, seed, limit_time)
+      unit, seed, limit_time, model_type)
       implicit none
       class(epidemic_net), intent(in) :: initialized_net
-      real(dp), intent(in) :: infection_rate, recovery_rate, limit_time, skip_output_time
+      real(dp), intent(in) :: infection_rate, recovery_rate, limit_time
       integer(ik), intent(in) :: unit, seed
-
+      integer(bk), intent(in) :: model_type
       type(epidemic_simulation) :: sim
       type(epidemic_step_event) :: sim_event
       type(epidemic_simulation_stats) :: sim_stats
@@ -84,17 +84,24 @@ contains
       integer(ik) :: i_sim
       character(len=:), allocatable :: filename
 
-      write(name, '(A,F10.5,A,F10.5,A,I5)') 'I=', infection_rate, '-R=', recovery_rate, '-S=', seed
-      filename = trim(adjustl(name))
+      if (model_type == SIR_MODEL) then
+         write(name, '(A,F10.5,A,F10.5,A,I5)') 'SIR-I=', infection_rate, '-R=', recovery_rate, '-S=', seed
+      else if (model_type == SIS_MODEL) then
+         write(name, '(A, A,F10.5,A,F10.5,A,I5)') 'SIS-I=', infection_rate, '-R=', recovery_rate, '-S=', seed
+      end if
+      
+         filename = trim(adjustl(name))
       !$omp critical(name_write)
       write(*, *) name
       !$omp end critical(name_write)
 
-      sim = initialize_simulation(initialized_net, seed)
+      sim = initialize_simulation(initialized_net, seed, model_type)
       ! set all nodes infected
-      do i_sim = 1, initialized_net%stats%nodes_count
-         call sim%set_infected_node(i_sim)
-      end do
+      ! do i_sim = 1, initialized_net%stats%nodes_count
+      !    call sim%set_infected_node(i_sim)
+      ! end do
+      call sim%set_infected_node(1)
+
       sim%infection_rate = infection_rate
       sim%recovery_rate = recovery_rate
 
@@ -109,17 +116,16 @@ contains
             exit
          end if
          write(*, '(A,F10.5,A,I5,A,F10.5)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=',sim%time
-         if (skip_output_time < sim%time) then
-            sim_stats = sim%get_stats()
-            !$omp critical(file_write)
-            write(unit, "(E20.10, E20.10, E20.10, E20.10)") sim%time, &
-               sim_stats%rates%actual_infection_rate, sim_stats%rates%actual_recovery_rate, sim_stats%infected_density
-            !$omp end critical(file_write)
+         sim_stats = sim%get_stats()
+         !$omp critical(file_write)
+         write(unit, "(E20.10, E20.10, E20.10, E20.10, E20.10)") sim%time, &
+            sim_stats%rates%actual_infection_rate, sim_stats%rates%actual_recovery_rate, &
+            sim_stats%infected_density, sim_stats%recovered_density
+         !$omp end critical(file_write)
 
-            if (sim%time > limit_time) then
-               write(*, '(A,F10.5,A,I5,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=max'
-               exit
-            end if
+         if (sim%time > limit_time) then
+            write(*, '(A,F10.5,A,I5,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=max'
+            exit
          end if
       end do
 

@@ -8,6 +8,9 @@ module epidemic
    integer, parameter, private :: ik = int32
    integer, parameter, private :: bk = int8
 
+   integer(bk), parameter, public :: SIS_MODEL = 1
+   integer(bk), parameter, public :: SIR_MODEL = 2
+
    type epidemic_rates
       real(dp) actual_infection_rate
       real(dp) actual_recovery_rate
@@ -23,13 +26,14 @@ module epidemic
    type epidemic_simulation_stats
       real(dp) infected_density
       real(dp) healthy_density
+      real(dp) recovered_density
       type(epidemic_rates) rates
    end type epidemic_simulation_stats
 
    type epidemic_simulation
       type(epidemic_net) net
       type(epidemic_rates) actual_rates
-
+      integer(bk) :: model_type ! 1 = SIS, 2 = SIR
       real(dp) :: infection_rate = 0.0, recovery_rate= 0.0
       real(dp) :: time = 0.0
       ! lista de nodos infectados
@@ -48,6 +52,7 @@ module epidemic
       ! posición coincidente con neighbours y referencia a índice de active_links
       integer(ik), allocatable :: neighbours_active_links_index(:)
 
+      integer(ik) :: recovered_nodes_count
       type(mt19937_state) :: rnd
    contains
       procedure, public :: act
@@ -68,10 +73,11 @@ module epidemic
 
 contains
 
-   type(epidemic_simulation) function initialize_simulation(net, seed) result(retval)
+   type(epidemic_simulation) function initialize_simulation(net, seed, mode) result(retval)
       type(epidemic_net), intent(in) :: net
       integer(ik), intent(in) :: seed
-
+      integer(bk), intent(in) :: mode
+      retval%model_type = mode
       retval%net = net
       allocate(retval%active_links(2*net%stats%links_count, 2), &
          retval%node_states(net%stats%nodes_count), &
@@ -84,6 +90,7 @@ contains
       retval%infected_nodes(:) = 0
       retval%neighbours_active_links_index(:) = 0
       retval%time = 0
+      retval%recovered_nodes_count = 0
       write(*,*) 'Initialized simulation'
    end function initialize_simulation
 
@@ -96,8 +103,8 @@ contains
       class(epidemic_simulation), intent(inout) :: this
       real(dp) :: numb
       call this%calculate_actual_rates()
-      
-      if (this%actual_rates%total_rate == 0.) then 
+
+      if (this%actual_rates%total_rate == 0.) then
          retval%selected_node = -1
          retval%action = 'E'
          return
@@ -117,8 +124,14 @@ contains
    type(epidemic_simulation_stats) function get_stats(this) result(retval)
       class(epidemic_simulation), intent(inout) :: this
       retval%rates = this%actual_rates
-      retval%infected_density = real(this%infected_nodes_count) / this%net%stats%nodes_count
-      retval%healthy_density = 1-retval%infected_density
+      retval%infected_density = real(this%infected_nodes_count, kind=dp) / this%net%stats%nodes_count
+      if (this%model_type == SIS_MODEL) then
+         retval%healthy_density = 1.-retval%infected_density
+         retval%recovered_density = 0.
+      else if (this%model_type == SIR_MODEL) then
+         retval%recovered_density = real(this%recovered_nodes_count, kind=dp) / this%net%stats%nodes_count
+         retval%healthy_density = 1.-retval%infected_density-retval%recovered_density
+      end if
    end function get_stats
 
    subroutine calculate_actual_rates(this)
@@ -179,7 +192,7 @@ contains
 
       ! delete the active selected link
 
-      ! remove neighbour's active link pointer 
+      ! remove neighbour's active link pointer
       do i = this%net%starter_ptrs(origin_node_idx), this%net%end_ptrs(origin_node_idx)
          if (this%neighbours_active_links_index(i) == active_link_idx) then
             this%neighbours_active_links_index(i) = 0
@@ -208,7 +221,7 @@ contains
       present_value = present(origin_node_idx)
 
       ! easy verification
-      if (this%node_states(node_to_infect_idx) == 1) then
+      if (this%node_states(node_to_infect_idx) /= 0) then
          write(*, *) "ERROR in set_infected_node: Node already infected"
          write(*, *) "  Node:", node_to_infect_idx
          stop
@@ -264,7 +277,7 @@ contains
                this%neighbours_active_links_index(i) = 0
             end if
 
-         elseif (this%node_states(neighbor) == 0) then ! if neighbor is not infected
+         else if (this%node_states(neighbor) == 0) then ! if neighbor is susceptible
             ! add to infection list
             neighbor_link_idx = this%add_active_link(node_to_infect_idx, neighbor)
             this%neighbours_active_links_index(i) = neighbor_link_idx
@@ -289,7 +302,12 @@ contains
       end if
 
       ! change status
-      this%node_states(recovered_node) = 0
+      if (this%model_type == SIS_MODEL) then
+         this%node_states(recovered_node) = 0
+      else if (this%model_type == SIR_MODEL) then
+         this%node_states(recovered_node) = 2
+         this%recovered_nodes_count = this%recovered_nodes_count + 1
+      end if
 
       ! remove from infected list (swap with last)
       this%infected_nodes(recovered_idx) = this%infected_nodes(this%infected_nodes_count)
@@ -314,22 +332,24 @@ contains
          end if
       end do
 
-      ! add active link from infected nodes to recovered node
-      do i = this%net%starter_ptrs(recovered_node), this%net%end_ptrs(recovered_node)
-         neighbor = this%net%neighbours(i)
-         ! if neighbour is infected
-         if (this%node_states(neighbor) == 1) then
-            ! search for link between neighbour and active link
-            do j = this%net%starter_ptrs(neighbor), this%net%end_ptrs(neighbor)
-               if (this%net%neighbours(j) == recovered_node) then
-                  ! add active link and exit loop
-                  link_idx = this%add_active_link(neighbor, recovered_node)
-                  this%neighbours_active_links_index(j) = link_idx
-                  exit
-               end if
-            end do
-         end if
-      end do
+      ! add active link from infected nodes to recovered node if SIS
+      if (this%model_type == SIS_MODEL) then
+         do i = this%net%starter_ptrs(recovered_node), this%net%end_ptrs(recovered_node)
+            neighbor = this%net%neighbours(i)
+            ! if neighbour is infected
+            if (this%node_states(neighbor) == 1) then
+               ! search for link between neighbour and active link
+               do j = this%net%starter_ptrs(neighbor), this%net%end_ptrs(neighbor)
+                  if (this%net%neighbours(j) == recovered_node) then
+                     ! add active link and exit loop
+                     link_idx = this%add_active_link(neighbor, recovered_node)
+                     this%neighbours_active_links_index(j) = link_idx
+                     exit
+                  end if
+               end do
+            end if
+         end do
+      end if
 
    end subroutine recover_node
 
@@ -622,6 +642,18 @@ contains
                   write(*, *) '  Infected node 2:', neighbour_idx
                   write(*, *) '  Pointer:', ptr_idx
                   stop
+               end if
+            elseif (this%node_states(neighbour_idx) == 2) then
+               ! En SIR: NUNCA debe haber enlace activo hacia recuperados
+               if (this%model_type == SIR_MODEL) then
+                  ptr_idx = this%neighbours_active_links_index(j)
+                  if (ptr_idx > 0 .and. ptr_idx <= this%active_links_count) then
+                     write(*, *) 'ERROR: Active link to recovered node in SIR!'
+                     write(*, *) '  Infected node:', origin
+                     write(*, *) '  Recovered node:', neighbour_idx
+                     write(*, *) '  Pointer:', ptr_idx
+                     stop
+                  end if
                end if
             end if
          end do

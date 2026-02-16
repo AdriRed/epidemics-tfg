@@ -68,8 +68,8 @@ program main
    
    !$omp parallel do private(i, j) schedule(dynamic) collapse(2)
    do i = 1, 100
-      do j = 1, 30
-         call execute_simulation(net, real(i*2, dp)/100, real(1., dp), i*100+j, 42069+j, real(100, dp), SIR_MODEL)
+      do j = 1, 60
+         call execute_simulation(net, real(i*2, dp)/1000, real(1., dp), i*100+j, 42069+j, real(100, dp), SIR_MODEL)
       end do
    end do
    !$omp end parallel do

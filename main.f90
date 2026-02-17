@@ -9,52 +9,14 @@ program main
    integer, parameter :: bk = int8
 
    type(epidemic_net) :: net
-   type(epidemic_simulation) :: simulation
-   type(epidemic_step_event) :: event
-   type(epidemic_simulation_stats) :: stats
-   integer(ik) :: i, j
-   real(dp) :: time_limit, eval_time, relax_time
-   open(unit=11, file='./ignore-files/musae_git_edges.csv', action='read')
+   open(unit=11, file='./ignore-files/out.moreno_beach_beach', action='read')
 
-   net = initialize_net(11)
+   net = initialize_net(11, .true.)
    call net%hashmap%clear()
    call net%print_stats()
    close(unit=11)
 
-   ! simulation = initialize_simulation(net, 42069, SIS_MODEL)
-   ! set all nodes infected
-   ! do i = 1, net%stats%nodes_count
-   !    call simulation%set_infected_node(i)
-   ! end do
-   ! eval_time = 0.
-   ! time_limit = 2.
-   ! relax_time = 0.5
-   ! ! delta
-   ! simulation%recovery_rate = 1
-   ! simulation%infection_rate = 1
-   ! open(unit=12, file='density_by_rate.dat', action='write')
-   ! do i = 100, 1, -1
-   !    ! lambda
-   !    simulation%infection_rate = real(i, kind=dp)/100.
-   !    write(*, *) "Starting for infection rate = ", simulation%infection_rate
-   !    do while (eval_time < time_limit)
 
-   !       event = simulation%act()
-   !       eval_time = eval_time + event%elapsed_time
-   !       stats = simulation%get_stats()
-   !       ! call simulation%verify_consistency()
-   !       if (relax_time < eval_time) then
-   !          write(12, *) simulation%time, simulation%infection_rate, &
-   !          stats%infected_density
-   !       end if
-
-   !       write(*, "(A, F5.3, A, F10.5, A, F5.3)") "Infection rate = ", simulation%infection_rate, ", Time = ", simulation%time, &
-   !          ", Density = ", stats%infected_density
-   !    end do
-   !    eval_time = eval_time - time_limit
-
-   ! end do
-   ! close(12)
 
 
 
@@ -65,16 +27,68 @@ program main
    ! !$omp end parallel do
    ! close(12)
 
-   
-   !$omp parallel do private(i, j) schedule(dynamic) collapse(2)
-   do i = 1, 100
-      do j = 1, 60
-         call execute_simulation(net, real(i*2, dp)/1000, real(1., dp), i*100+j, 42069+j, real(100, dp), SIR_MODEL)
-      end do
-   end do
-   !$omp end parallel do
+
+
 
 contains
+
+   subroutine sir_model_evolution(init_net)
+      implicit none
+      type(epidemic_net), intent(in) :: init_net
+      integer(ik) :: i_sim, j_sim
+      !$omp parallel do private(i, j) schedule(dynamic) collapse(2)
+      do i_sim = 1, 100
+         do j_sim = 1, 60
+            call execute_simulation(init_net, real(i_sim*2, dp)/1000, real(1., dp), &
+            i_sim*100+j_sim, 42069+j_sim, real(100, dp), SIR_MODEL)
+         end do
+      end do
+      !$omp end parallel do
+   end subroutine sir_model_evolution
+
+   subroutine see_prevalence(init_net)
+      implicit none
+      type(epidemic_net), intent(in) :: init_net
+      type(epidemic_simulation) :: simulation
+      type(epidemic_step_event) :: event
+      type(epidemic_simulation_stats) :: stats
+      real(dp) :: time_limit, eval_time, relax_time
+      integer(ik) :: i_sim
+      simulation = initialize_simulation(init_net, 42069, SIS_MODEL)
+      ! set all nodes infected
+      do i_sim = 1, init_net%stats%nodes_count
+         call simulation%set_infected_node(i_sim)
+      end do
+      eval_time = 0.
+      time_limit = 2.
+      relax_time = 0.5
+      ! delta
+      simulation%recovery_rate = 1
+      simulation%infection_rate = 1
+      open(unit=12, file='density_by_rate.dat', action='write')
+      do i_sim = 100, 1, -1
+         ! lambda
+         simulation%infection_rate = real(i_sim, kind=dp)/100.
+         write(*, *) "Starting for infection rate = ", simulation%infection_rate
+         do while (eval_time < time_limit)
+
+            event = simulation%act()
+            eval_time = eval_time + event%elapsed_time
+            stats = simulation%get_stats()
+            ! call simulation%verify_consistency()
+            if (relax_time < eval_time) then
+               write(12, *) simulation%time, simulation%infection_rate, &
+                  stats%infected_density
+            end if
+
+            write(*, "(A, F5.3, A, F10.5, A, F5.3)") "Infection rate = ", simulation%infection_rate, ", Time = ", simulation%time, &
+               ", Density = ", stats%infected_density
+         end do
+         eval_time = eval_time - time_limit
+
+      end do
+      close(12)
+   end subroutine see_prevalence
 
    subroutine execute_simulation(initialized_net, infection_rate, recovery_rate, &
       unit, seed, limit_time, model_type)

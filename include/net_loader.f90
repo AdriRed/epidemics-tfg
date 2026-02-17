@@ -4,11 +4,13 @@ module net_loader
    implicit none
    integer, parameter, private :: ik = int32
    integer, parameter, private :: dp = real64
+   integer, parameter, private :: ss = 60
 
 
    type epidemic_net_stats
       integer(ik) :: nodes_count, links_count
       real(dp) :: average_degree, average_degree_sqrd
+      real(dp) :: average_weight
    end type epidemic_net_stats
    type epidemic_net
       integer(ik), allocatable :: neighbour_counterpart_ptrs(:), neighbours(:), starter_ptrs(:), end_ptrs(:), degree(:)
@@ -39,7 +41,9 @@ contains
       write(*, "(A, F17.8)") '<k^2> = ', this%stats%average_degree_sqrd
       write(*, "(A, F17.8)") 'Var k = ', sqrt(this%stats%average_degree_sqrd - &
          this%stats%average_degree*this%stats%average_degree)
-
+      if (this%weighted) then
+         write(*, "(A, F17.8)") 'Var w = ', this%stats%average_weight
+      end if
    end subroutine print_stats
 
 
@@ -75,7 +79,7 @@ contains
       call init_neighbours(unit, net, weighted)
       write(*, *) 'Initialized neighbour array'
 
-      call clean_repeated_neighbours(net)
+      call clean_repeated_neighbours(net, weighted)
       write(*, *) 'Cleaned neighbours. Reduced neighbours by ', net%stats%links_count-initial_links
 
       call calculate_stats(net)
@@ -88,14 +92,19 @@ contains
       integer(ik) :: i
       net%stats%average_degree = 0.
       net%stats%average_degree_sqrd = 0.
+      net%stats%average_weight = 0.
 
       do i = 1, net%stats%nodes_count
          net%stats%average_degree = net%stats%average_degree + net%degree(i)
          net%stats%average_degree_sqrd = net%stats%average_degree_sqrd + net%degree(i)*net%degree(i)
+         if (net%weighted) then
+            net%stats%average_weight = net%stats%average_weight + net%weights(i)
+         end if
       end do
 
       net%stats%average_degree = net%stats%average_degree / net%stats%nodes_count
       net%stats%average_degree_sqrd = net%stats%average_degree_sqrd / net%stats%nodes_count
+      net%stats%average_weight = net%stats%average_weight / net%stats%nodes_count
 
    end subroutine calculate_stats
 
@@ -103,14 +112,20 @@ contains
    subroutine init_degrees_pointers(unit, net)
       integer(ik), intent(in) :: unit
       type(epidemic_net), intent(inout) :: net
-      integer(ik) :: iostat, node_a, node_b, index_node_a, index_node_b, i
+      integer(ik) :: iostat, node_a, node_b, index_node_a, index_node_b, i, idx
+      character(ss) :: line
+
       rewind(unit)
 
       do
-         read(unit, *, iostat=iostat) node_a, node_b
+         read(unit, "(a)", iostat=iostat) line
          if (iostat < 0) then
             exit
          else
+
+            idx = index(line, "%", kind=ik)
+            if (idx > 0) cycle ! detected comment
+            read(line, *, iostat=iostat) node_a, node_b
             if (node_a == node_b) cycle ! skip autolinks
 
             call net%hashmap%get(node_a, index_node_a)
@@ -131,16 +146,19 @@ contains
 
    integer(ik) function count_lines(unit) result(retval)
       integer(ik), intent(in) :: unit
-      integer(ik) :: iostat
+      integer(ik) :: iostat, idx
+      character(ss) :: line
       retval = 0
       rewind(unit)
       iostat = 0
 
       do
-         read(unit, *, iostat=iostat)
-         if (iostat < 0) then
+         read(unit, "(a)", iostat=iostat) line
+         if (iostat < 0) then ! finished file
             exit
          else
+            idx = index(line, "%", kind=ik)
+            if (idx > 0) cycle ! detected comment
             retval = retval + 1
          end if
       end do
@@ -151,7 +169,8 @@ contains
    subroutine init_hashmap(unit, net)
       integer(ik), intent(in) :: unit
       type(epidemic_net), intent(inout) :: net
-      integer(ik) :: i, iostat, dummy, node_a, node_b, lines
+      integer(ik) :: i, iostat, dummy, node_a, node_b, lines, idx
+      character(ss) :: line
       logical :: exists
       i = 1
       lines = count_lines(unit)
@@ -159,10 +178,17 @@ contains
       iostat = 0
       call net%hashmap%reserve(lines) ! reserve N approx E nodes
       do
-         read(unit, *, iostat=iostat) node_a, node_b
+
+         read(unit, "(a)", iostat=iostat) line
+
          if (iostat < 0) then
             exit
          else
+
+            idx = index(line, "%", kind=ik)
+            if (idx > 0) cycle ! detected comment
+
+            read(line, *, iostat=iostat) node_a, node_b
             if (node_a == node_b) cycle ! skip autolinks
 
             call net%hashmap%get(node_a, dummy, exists)
@@ -186,20 +212,27 @@ contains
       integer(ik), intent(in) :: unit
       logical, intent(in) :: weighted
       type(epidemic_net), intent(inout) :: net
-      integer(ik) :: iostat, node_a, node_b, index_node_a, index_node_b
+      integer(ik) :: iostat, node_a, node_b, index_node_a, index_node_b, idx
+      character(ss) :: line
       real(dp) :: weight
       iostat = 0
 
       rewind(unit)
       do
-         if (weighted) then
-            read(unit, *, iostat=iostat) node_a, node_b
-         else
-            read(unit, *, iostat=iostat) node_a, node_b, weight
-         end if
+         read(unit, "(a)", iostat=iostat) line
 
 
          if (iostat < 0) exit
+
+
+         idx = index(line, "%", kind=ik)
+         if (idx > 0) cycle ! detected comment
+
+         if (weighted) then
+            read(line, *, iostat=iostat) node_a, node_b, weight
+         else
+            read(line, *, iostat=iostat) node_a, node_b
+         end if
 
          if (node_a == node_b) cycle ! skip autolinks
 
@@ -219,8 +252,9 @@ contains
       end do
    end subroutine init_neighbours
 
-   subroutine clean_repeated_neighbours(net)
+   subroutine clean_repeated_neighbours(net, weighted)
       type(epidemic_net), intent(inout) :: net
+      logical, intent(in) :: weighted
       integer(ik) :: i, j, k
       integer(ik) :: startp, endp, curr_neigh
       logical :: found
@@ -249,10 +283,16 @@ contains
             if (found) then ! if repeated neighbour found
                ! replace with the latest neighbour
                net%neighbours(j) = net%neighbours(endp)
+               net%neighbours(endp) = 0
+               if (weighted) then
+                  net%weights(j) = net%weights(endp)
+                  net%weights(endp) = 0
+               end if
                ! reduce end pointer and degree
                endp = endp - 1
                net%degree(i) = net%degree(i) - 1
                net%stats%links_count = net%stats%links_count-1
+
                ! continue do while
                cycle
             else ! if not found, next neighbour

@@ -11,6 +11,10 @@ module epidemic
    integer(bk), parameter, public :: SIS_MODEL = 1
    integer(bk), parameter, public :: SIR_MODEL = 2
 
+   integer(bk), parameter, public :: SUSCEPTIBLE = 0
+   integer(bk), parameter, public :: INFECTED = 1
+   integer(bk), parameter, public :: RECOVERED = -1
+
    type epidemic_rates
       real(dp) actual_infection_rate
       real(dp) actual_recovery_rate
@@ -42,11 +46,13 @@ module epidemic
       ! lista de links activos (linx entre un nodo infectado y otro no infectado)
       integer(ik), allocatable :: active_links(:, :)
       integer(ik) :: active_links_count = 0
+      real(dp), allocatable :: active_links_weights(:)
+      real(dp) :: active_links_weights_sum = 0.
       ! estados de nodos
       integer(bk), allocatable :: node_states(:)
 
       ! lista de indices de active_links a los cuales hace referencia el mismo elemento de vecinos
-      ! active_links                  = [4-3][1-2]
+      ! active_links                  = [4,3][1,2]
       ! neighbours                    = [2][3]|[1]|[1][4]|[3][5]...
       ! neighbours_active_links_index = [2][ ]|[ ]|[ ][ ]|[1][ ]...
       ! posición coincidente con neighbours y referencia a índice de active_links
@@ -84,9 +90,14 @@ contains
          retval%infected_nodes(net%stats%nodes_count), &
          retval%neighbours_active_links_index(2*net%stats%links_count))
 
+      if (net%weighted) then
+         allocate(retval%active_links_weights(2*net%stats%links_count))
+         retval%active_links_weights(:) = 0.
+      end if
+
       call retval%rnd%init_genrand(seed)
       retval%active_links(:, :) = 0
-      retval%node_states(:) = 0
+      retval%node_states(:) = SUSCEPTIBLE
       retval%infected_nodes(:) = 0
       retval%neighbours_active_links_index(:) = 0
       retval%time = 0
@@ -97,6 +108,9 @@ contains
    subroutine clear(this)
       class(epidemic_simulation), intent(inout) :: this
       deallocate(this%active_links, this%node_states, this%infected_nodes, this%neighbours_active_links_index)
+      if (this%net%weighted) then
+         deallocate(this%active_links_weights)
+      end if
    end subroutine clear
 
    type(epidemic_step_event) function act(this) result(retval)
@@ -136,7 +150,11 @@ contains
 
    subroutine calculate_actual_rates(this)
       class(epidemic_simulation), intent(inout) :: this
-      this%actual_rates%actual_infection_rate = this%active_links_count*this%infection_rate
+      if (this%net%weighted) then
+         this%actual_rates%actual_infection_rate = this%active_links_weights_sum * this%infection_rate
+      else
+         this%actual_rates%actual_infection_rate = this%active_links_count*this%infection_rate
+      end if
       this%actual_rates%actual_recovery_rate= this%infected_nodes_count*this%recovery_rate
       this%actual_rates%total_rate = this%actual_rates%actual_infection_rate + this%actual_rates%actual_recovery_rate
    end subroutine calculate_actual_rates
@@ -156,10 +174,23 @@ contains
    ! returns: the selected node index
    integer(ik) function infect(this) result(chosen_node)
       class(epidemic_simulation), intent(inout) :: this
-      integer(ik) :: chosen_link_idx
-      chosen_link_idx = int(this%rnd%grnd()*this%active_links_count, kind=ik)+1
-      chosen_node = this%active_links(chosen_link_idx, 2)
+      real(dp) :: random_numb
+      integer(ik) :: chosen_link_idx, i
+      if (this%net%weighted) then
+         random_numb = this%rnd%grnd()*this%active_links_weights_sum
+         do i = 1, this%active_links_count
+            random_numb = random_numb-this%active_links_weights(i)
+            if (random_numb <= 0) then
+               chosen_link_idx = i
+               exit
+            end if
+         end do
+      else
+         random_numb = this%rnd%grnd()*this%active_links_count
+         chosen_link_idx = int(random_numb, kind=ik)+1
+      end if
 
+      chosen_node = this%active_links(chosen_link_idx, 2)
       call this%infect_node(chosen_link_idx)
    end function infect
 
@@ -176,14 +207,14 @@ contains
       class(epidemic_simulation), intent(inout) :: this
       integer(ik), intent(in) :: active_link_idx
       integer(ik) :: origin_node_idx, node_to_infect_idx
-      integer(ik) :: i, j, link_idx
+      integer(ik) :: i
 
       origin_node_idx = this%active_links(active_link_idx, 1)
       node_to_infect_idx = this%active_links(active_link_idx, 2)
 
       ! easy verification
-      if (this%node_states(origin_node_idx) /= 1 .or. &
-         this%node_states(node_to_infect_idx) /= 0) then
+      if (this%node_states(origin_node_idx) /= INFECTED .or. &
+         this%node_states(node_to_infect_idx) /= SUSCEPTIBLE) then
          write(*,*) "ERROR in infect_node: Invalid state combination"
          write(*,*) "  Origin state:", this%node_states(origin_node_idx)
          write(*,*) "  Target state:", this%node_states(node_to_infect_idx)
@@ -221,14 +252,14 @@ contains
       present_value = present(origin_node_idx)
 
       ! easy verification
-      if (this%node_states(node_to_infect_idx) /= 0) then
+      if (this%node_states(node_to_infect_idx) /= SUSCEPTIBLE) then
          write(*, *) "ERROR in set_infected_node: Node already infected"
          write(*, *) "  Node:", node_to_infect_idx
          stop
       end if
 
       ! change status
-      this%node_states(node_to_infect_idx) = 1
+      this%node_states(node_to_infect_idx) = INFECTED
 
       ! add to infected nodes list
       this%infected_nodes_count = this%infected_nodes_count + 1
@@ -244,7 +275,7 @@ contains
          end if
 
          ! if neighbour of infected node is also infected
-         if (this%node_states(neighbor) == 1) then
+         if (this%node_states(neighbor) == INFECTED) then
 
             ! search for any active link
             do j = this%net%starter_ptrs(neighbor), this%net%end_ptrs(neighbor)
@@ -257,6 +288,7 @@ contains
                      if (neighbor_link_idx /= this%active_links_count) then
                         call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count)
                      end if
+
                      ! remove active link
                      call this%remove_active_link(neighbor_link_idx)
                      ! reset index
@@ -273,13 +305,20 @@ contains
                if (neighbor_link_idx /= this%active_links_count) then
                   call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count)
                end if
+
                call this%remove_active_link(neighbor_link_idx)
                this%neighbours_active_links_index(i) = 0
             end if
 
-         else if (this%node_states(neighbor) == 0) then ! if neighbor is susceptible
+         else if (this%node_states(neighbor) == SUSCEPTIBLE) then ! if neighbor is susceptible
             ! add to infection list
-            neighbor_link_idx = this%add_active_link(node_to_infect_idx, neighbor)
+            if (this%net%weighted) then
+               this%active_links_weights_sum = this%active_links_weights_sum + this%net%weights(i)
+               neighbor_link_idx = this%add_active_link(node_to_infect_idx, neighbor, this%net%weights(i))
+            else
+               neighbor_link_idx = this%add_active_link(node_to_infect_idx, neighbor)
+
+            end if
             this%neighbours_active_links_index(i) = neighbor_link_idx
          end if
       end do
@@ -294,7 +333,7 @@ contains
       recovered_node = this%infected_nodes(recovered_idx)
 
       ! easy check
-      if (this%node_states(recovered_node) /= 1) then
+      if (this%node_states(recovered_node) /= INFECTED) then
          write(*, *) "ERROR in recover_node: Node not infected"
          write(*, *) "  Node:", recovered_node
          write(*, *) "  State:", this%node_states(recovered_node)
@@ -303,9 +342,9 @@ contains
 
       ! change status
       if (this%model_type == SIS_MODEL) then
-         this%node_states(recovered_node) = 0
+         this%node_states(recovered_node) = SUSCEPTIBLE
       else if (this%model_type == SIR_MODEL) then
-         this%node_states(recovered_node) = 2
+         this%node_states(recovered_node) = RECOVERED
          this%recovered_nodes_count = this%recovered_nodes_count + 1
       end if
 
@@ -337,12 +376,17 @@ contains
          do i = this%net%starter_ptrs(recovered_node), this%net%end_ptrs(recovered_node)
             neighbor = this%net%neighbours(i)
             ! if neighbour is infected
-            if (this%node_states(neighbor) == 1) then
+            if (this%node_states(neighbor) == INFECTED) then
                ! search for link between neighbour and active link
                do j = this%net%starter_ptrs(neighbor), this%net%end_ptrs(neighbor)
                   if (this%net%neighbours(j) == recovered_node) then
                      ! add active link and exit loop
-                     link_idx = this%add_active_link(neighbor, recovered_node)
+                     if (this%net%weighted) then
+                        this%active_links_weights_sum = this%active_links_weights_sum + this%net%weights(j)
+                        link_idx = this%add_active_link(neighbor, recovered_node, this%net%weights(j))
+                     else
+                        link_idx = this%add_active_link(neighbor, recovered_node)
+                     end if
                      this%neighbours_active_links_index(j) = link_idx
                      exit
                   end if
@@ -373,14 +417,17 @@ contains
 
    end subroutine update_active_links_ptrs
 
-   integer(ik) function add_active_link(this, origin_node, target_node) result(retval)
+   integer(ik) function add_active_link(this, origin_node, target_node, weight) result(retval)
       class(epidemic_simulation), intent(inout) :: this
-      integer(ik) :: origin_node, target_node
+      real(dp), optional, intent(in) :: weight
+      integer(ik), intent(in) :: origin_node, target_node
 
       this%active_links_count = this%active_links_count+1
       this%active_links(this%active_links_count, 1) = origin_node
       this%active_links(this%active_links_count, 2) = target_node
-
+      if (this%net%weighted .and. present(weight)) then
+         this%active_links_weights(this%active_links_count) = weight
+      end if
       retval = this%active_links_count
    end function add_active_link
 
@@ -388,6 +435,11 @@ contains
       class(epidemic_simulation), intent(inout) :: this
       integer(ik) :: idx
       this%active_links(idx, :) = this%active_links(this%active_links_count, :)
+      if (this%net%weighted) then
+         this%active_links_weights_sum = this%active_links_weights_sum - this%active_links_weights(idx)
+         this%active_links_weights(idx) = this%active_links_weights(this%active_links_count)
+         this%active_links_weights(this%active_links_count) = 0.
+      end if
       this%active_links_count = this%active_links_count - 1
    end subroutine remove_active_link
 
@@ -395,7 +447,7 @@ contains
    subroutine verify_consistency(this)
       class(epidemic_simulation), intent(inout) :: this
       integer(ik) :: i, j, origin, target, ptr_idx, neighbour_idx
-      integer(ik) :: count_infected_in_array, count_infected_in_states
+      integer(ik) :: count_infected_in_states
       logical :: found
 
       ! ============================================
@@ -403,7 +455,7 @@ contains
       ! ============================================
 
       ! Contar nodos en estado infectado
-      count_infected_in_states = count(this%node_states == 1)
+      count_infected_in_states = count(this%node_states == INFECTED)
 
       if (count_infected_in_states /= this%infected_nodes_count) then
          write(*, *) 'ERROR: Infected count mismatch!'
@@ -421,7 +473,7 @@ contains
             stop
          end if
 
-         if (this%node_states(this%infected_nodes(i)) /= 1) then
+         if (this%node_states(this%infected_nodes(i)) /= INFECTED) then
             write(*, *) 'ERROR: Node in infected_nodes is not infected!'
             write(*, *) '  Position:', i
             write(*, *) '  Node index:', this%infected_nodes(i)
@@ -466,7 +518,7 @@ contains
          end if
 
          ! Verificar que el origen está infectado
-         if (this%node_states(origin) /= 1) then
+         if (this%node_states(origin) /= INFECTED) then
             write(*, *) 'ERROR: Active link origin not infected!'
             write(*, *) '  Link index:', i
             write(*, *) '  Origin node:', origin
@@ -475,7 +527,7 @@ contains
          end if
 
          ! Verificar que el destino es susceptible
-         if (this%node_states(target) /= 0) then
+         if (this%node_states(target) /= SUSCEPTIBLE) then
             write(*, *) 'ERROR: Active link target not susceptible!'
             write(*, *) '  Link index:', i
             write(*, *) '  Target node:', target
@@ -621,7 +673,7 @@ contains
          do j = this%net%starter_ptrs(origin), this%net%end_ptrs(origin)
             neighbour_idx = this%net%neighbours(j)
 
-            if (this%node_states(neighbour_idx) == 0) then
+            if (this%node_states(neighbour_idx) == SUSCEPTIBLE) then
                ! Debería haber un enlace activo
                ptr_idx = this%neighbours_active_links_index(j)
 
@@ -632,7 +684,7 @@ contains
                   write(*, *) '  Pointer value:', ptr_idx
                   stop
                end if
-            elseif (this%node_states(neighbour_idx) == 1) then
+            elseif (this%node_states(neighbour_idx) == INFECTED) then
                ! NO debería haber enlace activo
                ptr_idx = this%neighbours_active_links_index(j)
 
@@ -643,7 +695,7 @@ contains
                   write(*, *) '  Pointer:', ptr_idx
                   stop
                end if
-            elseif (this%node_states(neighbour_idx) == 2) then
+            elseif (this%node_states(neighbour_idx) == RECOVERED) then
                ! En SIR: NUNCA debe haber enlace activo hacia recuperados
                if (this%model_type == SIR_MODEL) then
                   ptr_idx = this%neighbours_active_links_index(j)

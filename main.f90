@@ -17,7 +17,7 @@ program main
    close(unit=11)
 
 
-
+   call sis_prevalence(net)
 
 
    ! !$omp parallel do private(i_lambdas) schedule(dynamic)
@@ -40,32 +40,33 @@ contains
       do i_sim = 1, 100
          do j_sim = 1, 60
             call execute_simulation(init_net, real(i_sim*2, dp)/1000, real(1., dp), &
-            i_sim*100+j_sim, 42069+j_sim, real(100, dp), SIR_MODEL)
+               i_sim*100+j_sim, 42069+j_sim, real(100, dp), SIR_MODEL)
          end do
       end do
       !$omp end parallel do
    end subroutine sir_model_evolution
 
-   subroutine see_prevalence(init_net)
+   subroutine sis_prevalence(init_net)
       implicit none
-      type(epidemic_net), intent(in) :: init_net
+      type(epidemic_net), intent(inout) :: init_net
       type(epidemic_simulation) :: simulation
       type(epidemic_step_event) :: event
       type(epidemic_simulation_stats) :: stats
       real(dp) :: time_limit, eval_time, relax_time
-      integer(ik) :: i_sim
-      simulation = initialize_simulation(init_net, 42069, SIS_MODEL)
+      integer(ik) :: i_sim, node_id
+      simulation = initialize_simulation(init_net, 42070, SIS_MODEL)
       ! set all nodes infected
       do i_sim = 1, init_net%stats%nodes_count
          call simulation%set_infected_node(i_sim)
       end do
       eval_time = 0.
-      time_limit = 2.
-      relax_time = 0.5
+      time_limit = 100.
+      relax_time = 10.
       ! delta
       simulation%recovery_rate = 1
       simulation%infection_rate = 1
-      open(unit=12, file='density_by_rate.dat', action='write')
+      open(unit=22, file='density_by_rate_2.dat', action='write')
+      open(unit=23, file='density_by_rate_2_events.dat', action='write')
       do i_sim = 100, 1, -1
          ! lambda
          simulation%infection_rate = real(i_sim, kind=dp)/100.
@@ -77,18 +78,26 @@ contains
             stats = simulation%get_stats()
             ! call simulation%verify_consistency()
             if (relax_time < eval_time) then
-               write(12, *) simulation%time, simulation%infection_rate, &
+               write(22, *) simulation%time, simulation%infection_rate, &
                   stats%infected_density
             end if
-
-            write(*, "(A, F5.3, A, F10.5, A, F5.3)") "Infection rate = ", simulation%infection_rate, ", Time = ", simulation%time, &
+            write(*, "(A, F5.3, A, F15.5, A, F5.3)") "Infection rate = ", simulation%infection_rate, ", Time = ", simulation%time, &
                ", Density = ", stats%infected_density
+            call init_net%rev_hashmap%get(event%selected_node, node_id)
+            write(23, "(F15.5, F15.5, A1, I10)") simulation%time, simulation%infection_rate, event%action, node_id
+            if (stats%infected_density == 0.) then
+               write(*, *) "Reached healthy state"
+               exit
+            end if
          end do
          eval_time = eval_time - time_limit
-
+         if (stats%infected_density == 0.) then
+            exit
+         end if
       end do
-      close(12)
-   end subroutine see_prevalence
+      close(22)
+      close(23)
+   end subroutine sis_prevalence
 
    subroutine execute_simulation(initialized_net, infection_rate, recovery_rate, &
       unit, seed, limit_time, model_type)

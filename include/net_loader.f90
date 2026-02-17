@@ -16,7 +16,7 @@ module net_loader
       integer(ik), allocatable :: neighbour_counterpart_ptrs(:), neighbours(:), starter_ptrs(:), end_ptrs(:), degree(:)
       real(dp), allocatable :: weights(:)
       type(epidemic_net_stats) :: stats
-      type(int_int_hashmap) :: hashmap
+      type(int_int_hashmap) :: hashmap, rev_hashmap
       logical :: weighted
    contains
       procedure, public :: get_neighbours_by_index
@@ -177,6 +177,7 @@ contains
       rewind(unit)
       iostat = 0
       call net%hashmap%reserve(lines) ! reserve N approx E nodes
+      call net%rev_hashmap%reserve(lines) ! reserve N approx E nodes
       do
 
          read(unit, "(a)", iostat=iostat) line
@@ -194,11 +195,13 @@ contains
             call net%hashmap%get(node_a, dummy, exists)
             if (.not. exists) then
                call net%hashmap%set(node_a, i)
+               call net%rev_hashmap%set(i, node_a)
                i = i+1
             end if
             call net%hashmap%get(node_b, dummy, exists)
             if (.not. exists) then
                call net%hashmap%set(node_b, i)
+               call net%rev_hashmap%set(i, node_b)
                i = i+1
             end if
          end if

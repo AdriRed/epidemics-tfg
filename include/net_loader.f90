@@ -4,7 +4,7 @@ module net_loader
    implicit none
    integer, parameter, private :: ik = int32
    integer, parameter, private :: dp = real64
-   
+
 
    type epidemic_net_stats
       integer(ik) :: nodes_count, links_count
@@ -12,8 +12,10 @@ module net_loader
    end type epidemic_net_stats
    type epidemic_net
       integer(ik), allocatable :: neighbour_counterpart_ptrs(:), neighbours(:), starter_ptrs(:), end_ptrs(:), degree(:)
+      real(dp), allocatable :: weights(:)
       type(epidemic_net_stats) :: stats
       type(int_int_hashmap) :: hashmap
+      logical :: weighted
    contains
       procedure, public :: get_neighbours_by_index
       procedure, public :: print_stats
@@ -39,11 +41,12 @@ contains
          this%stats%average_degree*this%stats%average_degree)
 
    end subroutine print_stats
-   
 
 
-   type(epidemic_net) function initialize_net(unit) result(net)
+
+   type(epidemic_net) function initialize_net(unit, weighted) result(net)
       integer(ik), intent(in) :: unit
+      logical, intent(in) :: weighted
       integer(ik) :: initial_links
       call init_hashmap(unit, net)
       write(*, *) 'Initialized hash map'
@@ -54,17 +57,22 @@ contains
          net%end_ptrs(net%stats%nodes_count), &
          net%degree(net%stats%nodes_count))
 
+      if (weighted) then
+         allocate(net%weights(2*net%stats%links_count))
+         net%weights(:) = 0
+      end if
+      net%weighted = weighted
       net%neighbour_counterpart_ptrs(:) = 0
       net%neighbours(:) = 0
       net%starter_ptrs(:) = 0
       net%end_ptrs(:) = 0
       net%degree(:) = 0
-      
+
 
       call init_degrees_pointers(unit, net)
       write(*, *) 'Initialized degrees and pointers'
 
-      call init_neighbours(unit, net)
+      call init_neighbours(unit, net, weighted)
       write(*, *) 'Initialized neighbour array'
 
       call clean_repeated_neighbours(net)
@@ -174,15 +182,23 @@ contains
       net%stats%links_count = lines
    end subroutine init_hashmap
 
-   subroutine init_neighbours(unit, net)
+   subroutine init_neighbours(unit, net, weighted)
       integer(ik), intent(in) :: unit
+      logical, intent(in) :: weighted
       type(epidemic_net), intent(inout) :: net
       integer(ik) :: iostat, node_a, node_b, index_node_a, index_node_b
+      real(dp) :: weight
       iostat = 0
 
       rewind(unit)
       do
-         read(unit, *, iostat=iostat) node_a, node_b
+         if (weighted) then
+            read(unit, *, iostat=iostat) node_a, node_b
+         else
+            read(unit, *, iostat=iostat) node_a, node_b, weight
+         end if
+
+
          if (iostat < 0) exit
 
          if (node_a == node_b) cycle ! skip autolinks
@@ -196,7 +212,10 @@ contains
          net%neighbours(net%end_ptrs(index_node_b)) = index_node_a
          net%neighbour_counterpart_ptrs(net%end_ptrs(index_node_a)) = net%end_ptrs(index_node_b)
          net%neighbour_counterpart_ptrs(net%end_ptrs(index_node_b)) = net%end_ptrs(index_node_a)
-
+         if (weighted) then
+            net%weights(net%end_ptrs(index_node_a)) = weight
+            net%weights(net%end_ptrs(index_node_b)) = weight
+         end if
       end do
    end subroutine init_neighbours
 

@@ -11,7 +11,7 @@ program main
    type(epidemic_net) :: net
    open(unit=11, file='./ignore-files/out.moreno_beach_beach', action='read')
 
-   net = initialize_net(11, .true.)
+   net = initialize_net(11, .false.)
    call net%hashmap%clear()
    call net%print_stats()
    close(unit=11)
@@ -60,13 +60,13 @@ contains
          call simulation%set_infected_node(i_sim)
       end do
       eval_time = 0.
-      time_limit = 100.
-      relax_time = 10.
+      time_limit = 600.
+      relax_time = 50.
       ! delta
       simulation%recovery_rate = 1
       simulation%infection_rate = 1
-      open(unit=22, file='density_by_rate_2.dat', action='write')
-      open(unit=23, file='density_by_rate_2_events.dat', action='write')
+      open(unit=22, file='density_by_rate_unweighted.dat', action='write')
+      ! open(unit=23, file='density_by_rate_weighted_events.dat', action='write')
       do i_sim = 100, 1, -1
          ! lambda
          simulation%infection_rate = real(i_sim, kind=dp)/100.
@@ -84,7 +84,7 @@ contains
             write(*, "(A, F5.3, A, F15.5, A, F5.3)") "Infection rate = ", simulation%infection_rate, ", Time = ", simulation%time, &
                ", Density = ", stats%infected_density
             call init_net%rev_hashmap%get(event%selected_node, node_id)
-            write(23, "(F15.5, F15.5, A1, I10)") simulation%time, simulation%infection_rate, event%action, node_id
+            ! write(23, "(F15.5, F15.5, A1, I10)") simulation%time, simulation%infection_rate, event%action, node_id
             if (stats%infected_density == 0.) then
                write(*, *) "Reached healthy state"
                exit
@@ -96,7 +96,7 @@ contains
          end if
       end do
       close(22)
-      close(23)
+      ! close(23)
    end subroutine sis_prevalence
 
    subroutine execute_simulation(initialized_net, infection_rate, recovery_rate, &

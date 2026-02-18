@@ -1,0 +1,2 @@
+GitHub Social Network (MUSAE Git Edges): https://snap.stanford.edu/data/github-social.html
+Moreno Beach: http://konect.cc/networks/moreno_beach/

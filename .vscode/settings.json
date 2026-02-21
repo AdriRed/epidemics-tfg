@@ -1,12 +1,10 @@
 {
     "fortran.linter.includePaths": ["${workspaceFolder}/include"],
     "fortran.fortls.disabled": false,
-    "fortran.fortls.path": "fortls",
     "fortran.fortls.configure": "./fortls.config.json",
-    "fortran.formatting.formatter": "findent",
-    "fortran.formatting.path": "/usr/bin",
-    "[FortranFreeForm]": {
+    "[.f90]": {
         "editor.insertSpaces": true,
         "editor.indentSize": 3
-    }
+    },
+    "fortran.linter.initialize": true
 }

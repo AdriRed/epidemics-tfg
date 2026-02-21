@@ -11,7 +11,7 @@ module net_loader
       integer(ik) :: nodes_count, links_count
       real(dp) :: average_degree, average_degree_sqrd
       real(dp) :: average_weight
-   end type epidemic_net_stats
+         end type epidemic_net_stats
    type epidemic_net
       integer(ik), allocatable :: neighbour_counterpart_ptrs(:), neighbours(:), starter_ptrs(:), end_ptrs(:), degree(:)
       real(dp), allocatable :: weights(:)

@@ -48,3 +48,4 @@
 
 # ignored files:
 **/ignore-files/*
+**/nets/*

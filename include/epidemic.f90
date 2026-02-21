@@ -102,7 +102,7 @@ contains
       retval%neighbours_active_links_index(:) = 0
       retval%time = 0
       retval%recovered_nodes_count = 0
-      write(*,*) 'Initialized simulation'
+      ! write(*,*) 'Initialized simulation'
    end function initialize_simulation
 
    subroutine clear(this)

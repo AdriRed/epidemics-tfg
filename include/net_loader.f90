@@ -13,7 +13,7 @@ module net_loader
       real(dp) :: average_weight
          end type epidemic_net_stats
    type epidemic_net
-      integer(ik), allocatable :: neighbour_counterpart_ptrs(:), neighbours(:), starter_ptrs(:), end_ptrs(:), degree(:)
+      integer(ik), allocatable :: neighbours(:), starter_ptrs(:), end_ptrs(:), degree(:)
       real(dp), allocatable :: weights(:)
       type(epidemic_net_stats) :: stats
       type(int_int_hashmap) :: hashmap, rev_hashmap
@@ -55,8 +55,7 @@ contains
       call init_hashmap(unit, net)
       write(*, *) 'Initialized hash map'
       initial_links = net%stats%links_count
-      allocate(net%neighbour_counterpart_ptrs(2*net%stats%links_count), &
-         net%neighbours(2*net%stats%links_count), &
+      allocate(net%neighbours(2*net%stats%links_count), &
          net%starter_ptrs(net%stats%nodes_count), &
          net%end_ptrs(net%stats%nodes_count), &
          net%degree(net%stats%nodes_count))
@@ -66,7 +65,6 @@ contains
          net%weights(:) = 0
       end if
       net%weighted = weighted
-      net%neighbour_counterpart_ptrs(:) = 0
       net%neighbours(:) = 0
       net%starter_ptrs(:) = 0
       net%end_ptrs(:) = 0
@@ -246,8 +244,6 @@ contains
          net%end_ptrs(index_node_b) = net%end_ptrs(index_node_b) + 1
          net%neighbours(net%end_ptrs(index_node_a)) = index_node_b
          net%neighbours(net%end_ptrs(index_node_b)) = index_node_a
-         net%neighbour_counterpart_ptrs(net%end_ptrs(index_node_a)) = net%end_ptrs(index_node_b)
-         net%neighbour_counterpart_ptrs(net%end_ptrs(index_node_b)) = net%end_ptrs(index_node_a)
          if (weighted) then
             net%weights(net%end_ptrs(index_node_a)) = weight
             net%weights(net%end_ptrs(index_node_b)) = weight

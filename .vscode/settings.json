@@ -2,9 +2,10 @@
     "fortran.linter.includePaths": ["${workspaceFolder}/include"],
     "fortran.fortls.disabled": false,
     "fortran.fortls.configure": "./fortls.config.json",
-    "[.f90]": {
+    "[FortranFreeForm]": {
         "editor.insertSpaces": true,
-        "editor.indentSize": 3
+        "editor.indentSize": 3,
+        "editor.rulers": [132]
     },
     "fortran.linter.initialize": true
 }

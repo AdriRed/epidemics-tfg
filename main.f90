@@ -41,7 +41,7 @@ contains
       !$omp parallel do private(i_sim, j_sim) schedule(dynamic) collapse(2)
       do i_sim = 1, 100
          do j_sim = 1, 60
-            call execute_simulation(init_net, real(i_sim*2, dp)/1000, real(1., dp) &
+            call execute_simulation(init_net, real(i_sim*2, dp)/100, real(1., dp) &
                , 42069+j_sim, real(100, dp), SIR_MODEL, stats_unit=(i_sim*100+j_sim))
          end do
       end do

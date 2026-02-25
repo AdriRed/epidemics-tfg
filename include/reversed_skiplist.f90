@@ -15,7 +15,8 @@ module reversed_skiplist
 
    type skiplist_entry
       real(dp) :: weight
-      integer(ik) :: index
+      integer(ik), allocatable :: indexes(:)
+      integer(ik) :: indexes_count
       type(skiplist_entry_ptr), allocatable :: next(:)
    end type skiplist_entry
 
@@ -24,118 +25,154 @@ module reversed_skiplist
       integer(ik) :: max_level
       type(skiplist_entry_ptr), pointer :: head
       real(dp) :: promote_probability
-
+      integer(ik) :: max_indexes
    contains
       procedure :: clear => skiplist_clear
       procedure :: add => insert_skiplist
-      procedure :: search_greater_or_equal => find_previous_node_weight_greater_or_equal
       procedure :: debug_print => print_skiplist
+      procedure :: remove_entry => remove_entry
    end type skiplist
 contains
 
    subroutine print_skiplist(this)
       class(skiplist), intent(inout) :: this
       type(skiplist_entry), pointer :: previous
-      integer(ik) :: i
+      integer(ik) :: i, j
       do i = 1, this%max_level
          previous => this%head%ptr
          write(*, "(A11, I1, A5)") "---- Level ", i, " ----"
          do while(associated(previous))
-            write(*, "(F5.1, A4)", advance="no") previous%weight, ' -> '
+            write(*, "(F5.1, A2)", advance="no") previous%weight, ' ('
+            if (previous%indexes_count > 0) then
+               write(*, "(I3)", advance="no") previous%indexes(1)
+               do j = 2, previous%indexes_count
+                  write(*, "(A1, I3)", advance="no") ',', previous%indexes(j)
+               end do
+            end if
+            write(*, "(A5)", advance="no") ') ->'
             previous => previous%next(i)%ptr
          end do
          print *, 'NULL'
       end do
    end subroutine
 
-   function init_skiplist(maxlevels, rng, probability) result(retval)
-      integer(ik), intent(in) :: maxlevels
+   function init_skiplist(maxlevels, rng, probability, max_indexes) result(retval)
+      integer(ik), intent(in) :: maxlevels, max_indexes
       real(dp), intent(in) :: probability
       type(mt19937_state), intent(in), target :: rng
       type(skiplist) :: retval
       retval%rng => rng
       retval%max_level = maxlevels
       retval%promote_probability = probability
+      retval%max_indexes = max_indexes
       allocate(retval%head)
 
    end function init_skiplist
 
-   subroutine insert_skiplist(this, weight, index)
+   subroutine insert_skiplist(this, weight, index, index_position)
       class(skiplist), intent(inout) :: this
       real(dp), intent(in) :: weight
       integer(ik), intent(in) :: index
+      integer(ik), intent(inout), optional :: index_position
       integer(ik) :: level, i
       real(dp) :: r
       type(skiplist_entry), pointer :: data, previous, old_head
+      type(skiplist_entry_ptr), allocatable :: previous_ptrs(:)
+
       logical :: insert_head_link
       allocate(data)
-      data%index = index
       data%weight = weight
-      allocate(data%next(this%max_level))
-      insert_head_link = .true.
-      if (.not. associated(this%head%ptr)) then
+
+      allocate(data%indexes(this%max_indexes), data%next(this%max_level))
+      data%indexes_count = 1
+      data%indexes(1) = index
+
+      if (.not. associated(this%head%ptr)) then ! case where list is empty
          this%head%ptr => data
       else if (this%head%ptr%weight <= weight) then ! case where is going to be first
-         old_head => this%head%ptr
-         this%head%ptr => data
+         if (this%head%ptr%weight == weight) then !! if same weight
+            deallocate(data%indexes, data%next)
+            deallocate(data)
+            this%head%ptr%indexes_count = this%head%ptr%indexes_count +1
+            this%head%ptr%indexes(this%head%ptr%indexes_count) = index
+            if (present(index_position)) then
 
-         do i = this%max_level, 1, -1 ! linking new head the same as old head
-            if (insert_head_link) then
-               this%head%ptr%next(i)%ptr => old_head
-               r = this%rng%grnd()
-               insert_head_link = r < this%promote_probability
-            else
-               this%head%ptr%next(i)%ptr => old_head%next(i)%ptr
-               old_head%next(i)%ptr => null()
+               index_position = this%head%ptr%indexes_count
             end if
-         end do
+         else !insert new head
+            insert_head_link = .true.
+            old_head => this%head%ptr
+            this%head%ptr => data
 
-      else
-         previous => find_previous_node_weight_greater_or_equal(this, weight)
-         ! promoting
-         level = this%max_level
+            do i = this%max_level, 1, -1 ! linking new head the same as old head
+               if (insert_head_link) then
+                  this%head%ptr%next(i)%ptr => old_head
+                  r = this%rng%grnd()
+                  insert_head_link = r < this%promote_probability
+               else
+                  this%head%ptr%next(i)%ptr => old_head%next(i)%ptr
+                  old_head%next(i)%ptr => null()
+               end if
+            end do
+         end if
+      else ! normal case
+         level = 1
+         previous => this%head%ptr
+         allocate(previous_ptrs(this%max_level))
+
          do
-            data%next(level)%ptr => previous%next(level)%ptr ! new node pointing now to old next node
-            previous%next(level)%ptr => data ! old node pointing to new node
-            r = this%rng%grnd()
-            if (r < this%promote_probability) then
-               level = level - 1
-               if (level == 0) exit
+            if (.not. associated(previous%next(level)%ptr)) then ! end of the line
+
+               previous_ptrs(level)%ptr => previous
+               level = level+1
+               if (level > this%max_level) exit ! final level reached
+               cycle ! if not final level reached keep searching
             else
-               exit
+               if (weight < previous%next(level)%ptr%weight) then ! if next lesser
+                  previous => previous%next(level)%ptr ! get next in line
+               else if (weight == previous%next(level)%ptr%weight ) then ! insertion in node only
+                  previous => previous%next(level)%ptr
+                  exit
+               else ! if next isnt lesser, go to level below
+                  previous_ptrs(level)%ptr => previous
+                  level = level+1
+                  if (level > this%max_level) then
+                     exit
+                  end if
+               end if
             end if
          end do
+
+         if (previous%weight == weight) then
+            deallocate(data%indexes, data%next)
+            deallocate(data)
+            previous%indexes_count = previous%indexes_count +1
+            previous%indexes(previous%indexes_count) = index
+            if (present(index_position)) then
+               index_position = previous%indexes_count
+            end if
+         else !insert new node
+
+            ! promoting
+            level = this%max_level
+            do
+               data%next(level)%ptr => previous_ptrs(level)%ptr%next(level)%ptr ! new node pointing now to old next node
+               previous_ptrs(level)%ptr%next(level)%ptr => data
+               r = this%rng%grnd()
+               if (r < this%promote_probability) then
+                  level = level - 1
+                  if (level == 0) exit
+               else
+                  exit
+               end if
+            end do
+         end if
+         deallocate(previous_ptrs)
+
+
       end if
 
    end subroutine insert_skiplist
-
-   function find_previous_node_weight_greater_or_equal(this, weight) result(before_ptr)
-      class(skiplist), intent(inout) :: this
-      real(dp), intent(in) :: weight
-      type(skiplist_entry), pointer :: before_ptr
-      integer(ik) :: curr_lvl
-
-
-      curr_lvl = 1
-      before_ptr => this%head%ptr
-      do
-         if (.not. associated(before_ptr%next(curr_lvl)%ptr)) then ! end of the line
-            curr_lvl = curr_lvl+1
-            if (curr_lvl > this%max_level) exit ! final level reached
-            cycle ! if not final level reached keep searching
-         else
-            if (weight <= before_ptr%next(curr_lvl)%ptr%weight) then ! if next lesser
-               before_ptr => before_ptr%next(curr_lvl)%ptr ! get next in line
-            else ! if next isnt lesser, go to level below
-               curr_lvl = curr_lvl+1
-               if (curr_lvl > this%max_level) then
-                  exit
-               end if
-            end if
-         end if
-      end do
-
-   end function find_previous_node_weight_greater_or_equal
 
    subroutine skiplist_clear(this)
       class(skiplist), intent(inout) :: this
@@ -148,6 +185,7 @@ contains
 
       do while (associated(current))
          next_ptr => current%next(this%max_level)%ptr
+         deallocate(current%indexes)
          deallocate(current%next)
          deallocate(current)
          current => next_ptr
@@ -159,6 +197,69 @@ contains
       this%max_level = 0
    end subroutine skiplist_clear
 
+   ! subroutine skiplist_remove(this, weight, index_value)
 
+   ! end subroutine skiplist_remove
+
+   subroutine remove_entry(this, weight, index_position)
+      class(skiplist), intent(inout) :: this
+      real(dp), intent(in) :: weight
+      integer(ik), intent(in) :: index_position
+      type(skiplist_entry_ptr), allocatable :: previous_ptrs(:)
+      type(skiplist_entry), pointer :: before_ptr, current, delete_node
+      integer(ik) :: curr_lvl, i
+      logical :: full_deletion ! if full deletion needs to happen
+      curr_lvl = 1
+      before_ptr => this%head%ptr
+      allocate(previous_ptrs(this%max_level))
+      full_deletion = .false.
+      do
+         if (.not. associated(before_ptr%next(curr_lvl)%ptr)) then ! end of the line
+            curr_lvl = curr_lvl+1
+            if (curr_lvl > this%max_level) exit ! final level reached
+            cycle ! if not final level reached keep searching
+         else
+            if (weight < before_ptr%next(curr_lvl)%ptr%weight) then ! if next lesser
+               before_ptr => before_ptr%next(curr_lvl)%ptr ! get next in line
+            else if (weight == before_ptr%next(curr_lvl)%ptr%weight ) then ! if next is weight to remove
+               full_deletion = before_ptr%next(curr_lvl)%ptr%indexes_count == 1_ik
+               if (.not. full_deletion) then ! not last index to remove
+                  current => before_ptr%next(curr_lvl)%ptr
+                  current%indexes(index_position) = current%indexes(current%indexes_count)
+                  current%indexes(current%indexes_count) = 0
+                  current%indexes_count = current%indexes_count - 1
+                  exit
+               end if
+               previous_ptrs(curr_lvl)%ptr => before_ptr
+               delete_node => before_ptr%next(curr_lvl)%ptr
+               curr_lvl = curr_lvl+1
+               if (curr_lvl > this%max_level) then
+                  exit
+               end if
+            else ! if next isnt lesser, go to level below
+               curr_lvl = curr_lvl+1
+               if (curr_lvl > this%max_level) then
+                  exit
+               end if
+            end if
+         end if
+      end do
+
+      if (full_deletion) then ! delete node
+         do i = 1, this%max_level
+            if (associated(previous_ptrs(i)%ptr)) then
+               current => previous_ptrs(i)%ptr
+               current%next(i)%ptr => current%next(i)%ptr%next(i)%ptr !skip node
+            end if
+         end do
+         if (associated(delete_node)) then
+            deallocate(delete_node%indexes)
+            deallocate(delete_node)
+         end if
+      end if
+
+      deallocate(previous_ptrs)
+
+   end subroutine remove_entry
 
 end module reversed_skiplist

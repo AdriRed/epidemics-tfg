@@ -1,7 +1,7 @@
 {
     "fortran.linter.includePaths": ["${workspaceFolder}/include"],
     "fortran.fortls.disabled": false,
-    "fortran.fortls.configure": "./fortls.config.json",
+    "fortran.fortls.configure": "${workspaceFolder/fortls.config.json",
     "[FortranFreeForm]": {
         "editor.insertSpaces": true,
         "editor.indentSize": 3,

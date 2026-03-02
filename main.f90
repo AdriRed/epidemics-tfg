@@ -10,10 +10,10 @@ program main
 
    type(epidemic_net) :: net
    integer :: i_lambdas
-   ! open(unit=11, file='./nets/out.moreno_beach_beach', action='read')
-   open(unit=11, file='./nets/musae_git_edges.csv', action='read')
+   open(unit=11, file='./nets/out.moreno_beach_beach', action='read')
+   ! open(unit=11, file='./nets/musae_git_edges.csv', action='read')
 
-   net = initialize_net(11, weighted=.false.)
+   net = initialize_net(11, weighted=.true.)
    call net%hashmap%clear()
    call net%print_stats()
    close(unit=11)
@@ -21,7 +21,7 @@ program main
 
    ! call sis_prevalence(net)
 
-   ! call execute_simulation(net, 0.05_dp, 1._dp, 42072, 500._dp, SIS_MODEL, events_unit=20)
+   call execute_simulation(net, 0.05_dp, 1._dp, 42072, 500._dp, SIS_MODEL, events_unit=20)
 
    ! !$omp parallel do private(i_lambdas) schedule(dynamic)
    ! do i_lambdas = 100, 1, -1
@@ -29,7 +29,6 @@ program main
    ! end do
    ! !$omp end parallel do
 
-   call sir_model_evolution(net)
 
 
 contains

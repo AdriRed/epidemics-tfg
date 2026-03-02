@@ -1,4 +1,3 @@
-
 module reversed_skiplist
    use mt19937_par
    use iso_fortran_env, only: int8, int32, real64
@@ -14,14 +13,14 @@ module reversed_skiplist
    end type skiplist_entry_ptr
 
    type skiplist_entry
-      real(dp) :: weight
+      real(dp) :: weight, total_weight
       integer(ik), allocatable :: indexes(:)
       integer(ik) :: indexes_count
       type(skiplist_entry_ptr), allocatable :: next(:)
    end type skiplist_entry
 
    type skiplist
-      type(mt19937_state), pointer :: rng
+      type(mt19937_state) :: rng
       integer(ik) :: max_level
       type(skiplist_entry_ptr), pointer :: head
       real(dp) :: promote_probability
@@ -37,31 +36,36 @@ contains
    subroutine print_skiplist(this)
       class(skiplist), intent(inout) :: this
       type(skiplist_entry), pointer :: previous
-      integer(ik) :: i, j
+      integer(ik) :: i
       do i = 1, this%max_level
          previous => this%head%ptr
          write(*, "(A11, I1, A5)") "---- Level ", i, " ----"
          do while(associated(previous))
-            write(*, "(F5.1, A2)", advance="no") previous%weight, ' ('
-            if (previous%indexes_count > 0) then
-               write(*, "(I3)", advance="no") previous%indexes(1)
-               do j = 2, previous%indexes_count
-                  write(*, "(A1, I3)", advance="no") ',', previous%indexes(j)
-               end do
-            end if
-            write(*, "(A5)", advance="no") ') ->'
+            call print_node(previous)
             previous => previous%next(i)%ptr
          end do
          print *, 'NULL'
       end do
    end subroutine
 
-   function init_skiplist(maxlevels, rng, probability, max_indexes) result(retval)
-      integer(ik), intent(in) :: maxlevels, max_indexes
+   subroutine print_node(previous)
+      type(skiplist_entry), pointer :: previous
+      integer(ik) :: j
+      write(*, "(F5.1, A2)", advance="no") previous%weight, ' ('
+      if (previous%indexes_count > 0) then
+         write(*, "(I3)", advance="no") previous%indexes(1)
+         do j = 2, previous%indexes_count
+            write(*, "(A1, I3)", advance="no") ',', previous%indexes(j)
+         end do
+      end if
+      write(*, "(A5)", advance="no") ') ->'
+   end subroutine print_node
+
+   function init_skiplist(maxlevels, seed, probability, max_indexes) result(retval)
+      integer(ik), intent(in) :: maxlevels, max_indexes, seed
       real(dp), intent(in) :: probability
-      type(mt19937_state), intent(in), target :: rng
       type(skiplist) :: retval
-      retval%rng => rng
+      call retval%rng%init_genrand(seed)
       retval%max_level = maxlevels
       retval%promote_probability = probability
       retval%max_indexes = max_indexes
@@ -86,6 +90,7 @@ contains
       allocate(data%indexes(this%max_indexes), data%next(this%max_level))
       data%indexes_count = 1
       data%indexes(1) = index
+      data%total_weight = weight
 
       if (.not. associated(this%head%ptr)) then ! case where list is empty
          this%head%ptr => data
@@ -95,6 +100,7 @@ contains
             deallocate(data)
             this%head%ptr%indexes_count = this%head%ptr%indexes_count +1
             this%head%ptr%indexes(this%head%ptr%indexes_count) = index
+            this%head%ptr%total_weight = this%head%ptr%total_weight + weight
             if (present(index_position)) then
 
                index_position = this%head%ptr%indexes_count
@@ -148,6 +154,7 @@ contains
             deallocate(data)
             previous%indexes_count = previous%indexes_count +1
             previous%indexes(previous%indexes_count) = index
+            previous%total_weight = previous%total_weight + weight
             if (present(index_position)) then
                index_position = previous%indexes_count
             end if

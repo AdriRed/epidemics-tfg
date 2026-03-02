@@ -1,6 +1,7 @@
 module epidemic
    use net_loader
    use mt19937_par
+   use reversed_skiplist
    use iso_fortran_env, only: int8, int32, real64
    implicit none
 
@@ -44,12 +45,13 @@ module epidemic
       integer(ik), allocatable :: infected_nodes(:)
       integer(ik) :: infected_nodes_count = 0
       ! lista de links activos (linx entre un nodo infectado y otro no infectado)
-      integer(ik), allocatable :: active_links(:, :)
+      integer(ik), allocatable :: active_links(:, :), active_links_index_position(:)
       integer(ik) :: active_links_count = 0
       real(dp), allocatable :: active_links_weights(:)
       real(dp) :: active_links_weights_sum = 0.
       ! estados de nodos
       integer(bk), allocatable :: node_states(:)
+      type(skiplist) :: ordered_weights
 
       ! lista de indices de active_links a los cuales hace referencia el mismo elemento de vecinos
       ! active_links                  = [4,3][1,2]
@@ -89,13 +91,16 @@ contains
          retval%node_states(net%stats%nodes_count), &
          retval%infected_nodes(net%stats%nodes_count), &
          retval%neighbours_active_links_index(2*net%stats%links_count))
+      call retval%rnd%init_genrand(seed)
 
       if (net%weighted) then
-         allocate(retval%active_links_weights(2*net%stats%links_count))
+
+         allocate(retval%active_links_weights(2*net%stats%links_count), &
+            retval%active_links_index_position(2*net%stats%links_count))
+         retval%ordered_weights = init_skiplist(6_ik, seed, 0.4_dp, 150)
          retval%active_links_weights(:) = 0.
       end if
 
-      call retval%rnd%init_genrand(seed)
       retval%active_links(:, :) = 0
       retval%node_states(:) = SUSCEPTIBLE
       retval%infected_nodes(:) = 0
@@ -174,23 +179,39 @@ contains
    ! returns: the selected node index
    integer(ik) function infect(this) result(chosen_node)
       class(epidemic_simulation), intent(inout) :: this
-      real(dp) :: random_numb
+      type(skiplist_entry), pointer :: ptr
+      real(dp) :: random_numb, r
       integer(ik) :: chosen_link_idx, i
       if (this%net%weighted) then
-         random_numb = this%rnd%grnd()*this%active_links_weights_sum
-         do i = 1, this%active_links_count
-            random_numb = random_numb-this%active_links_weights(i)
-            if (random_numb <= 0) then
-               chosen_link_idx = i
-               exit
-            end if
+         r = this%rnd%grnd()
+         random_numb = r*this%active_links_weights_sum
+         ! do i = 1, this%active_links_count
+         !    random_numb = random_numb-this%active_links_weights(i)
+         !    if (random_numb <= 0) then
+         !       chosen_link_idx = i
+         !       exit
+         !    end if
+         ! end do
+         ptr => this%ordered_weights%head%ptr
+         do while ((random_numb - ptr%total_weight) .gt. 0)
+            random_numb = random_numb - ptr%total_weight
+            ptr => ptr%next(this%ordered_weights%max_level)%ptr
          end do
+
+         i = ceiling(random_numb / ptr%weight)
+         call print_node(ptr)
+         print*
+         print*, 'Weight ',ptr%weight,'      ->', i, '/', ptr%indexes_count
+         chosen_link_idx = ptr%indexes(i)
+         print*, 'Selected link ->', chosen_link_idx
+
       else
          random_numb = this%rnd%grnd()*this%active_links_count
          chosen_link_idx = int(random_numb, kind=ik)+1
       end if
 
       chosen_node = this%active_links(chosen_link_idx, 2)
+
       call this%infect_node(chosen_link_idx)
    end function infect
 
@@ -199,6 +220,8 @@ contains
       integer(ik) :: chosen_node_idx
       chosen_node_idx = int(this%rnd%grnd()*this%infected_nodes_count, kind=ik)+1
       chosen_node = this%infected_nodes(chosen_node_idx)
+      print*, 'R ->', chosen_node_idx
+
       call this%recover_node(chosen_node_idx)
    end function recover
 
@@ -246,7 +269,7 @@ contains
       class(epidemic_simulation), intent(inout) :: this
       integer(ik), intent(in) :: node_to_infect_idx
       integer(ik), intent(inout), optional :: origin_node_idx
-      integer(ik) :: neighbor, i, j, neighbor_link_idx
+      integer(ik) :: neighbor, i, j, neighbor_link_idx, position
       logical :: present_value
 
       present_value = present(origin_node_idx)
@@ -313,7 +336,6 @@ contains
          else if (this%node_states(neighbor) == SUSCEPTIBLE) then ! if neighbor is susceptible
             ! add to infection list
             if (this%net%weighted) then
-               this%active_links_weights_sum = this%active_links_weights_sum + this%net%weights(i)
                neighbor_link_idx = this%add_active_link(node_to_infect_idx, neighbor, this%net%weights(i))
             else
                neighbor_link_idx = this%add_active_link(node_to_infect_idx, neighbor)
@@ -382,7 +404,6 @@ contains
                   if (this%net%neighbours(j) == recovered_node) then
                      ! add active link and exit loop
                      if (this%net%weighted) then
-                        this%active_links_weights_sum = this%active_links_weights_sum + this%net%weights(j)
                         link_idx = this%add_active_link(neighbor, recovered_node, this%net%weights(j))
                      else
                         link_idx = this%add_active_link(neighbor, recovered_node)
@@ -421,27 +442,42 @@ contains
       class(epidemic_simulation), intent(inout) :: this
       real(dp), optional, intent(in) :: weight
       integer(ik), intent(in) :: origin_node, target_node
+      integer(ik) :: position
 
       this%active_links_count = this%active_links_count+1
       this%active_links(this%active_links_count, 1) = origin_node
       this%active_links(this%active_links_count, 2) = target_node
       if (this%net%weighted .and. present(weight)) then
+         this%active_links_weights_sum = this%active_links_weights_sum + weight
          this%active_links_weights(this%active_links_count) = weight
+         call this%ordered_weights%add(real(weight, kind=dp), this%active_links_count, position)
+         this%active_links_index_position(this%active_links_count) = position
       end if
       retval = this%active_links_count
    end function add_active_link
 
    subroutine remove_active_link(this, idx)
       class(epidemic_simulation), intent(inout) :: this
-      integer(ik) :: idx
+      integer(ik), intent(in) :: idx
+      integer(ik) :: moved_index, new_pos
+
       this%active_links(idx, :) = this%active_links(this%active_links_count, :)
       if (this%net%weighted) then
          this%active_links_weights_sum = this%active_links_weights_sum - this%active_links_weights(idx)
+         ! Usar la posición almacenada, no el índice global
+         call this%ordered_weights%remove_entry(real(this%active_links_weights(idx), kind=dp), &
+            this%active_links_index_position(idx), &
+            moved_index, new_pos)
+         if (moved_index /= 0) then
+            this%active_links_index_position(moved_index) = new_pos
+         end if
          this%active_links_weights(idx) = this%active_links_weights(this%active_links_count)
+         this%active_links_index_position(idx) = this%active_links_index_position(this%active_links_count)
          this%active_links_weights(this%active_links_count) = 0.
+         this%active_links_index_position(this%active_links_count) = 0
       end if
       this%active_links_count = this%active_links_count - 1
-   end subroutine remove_active_link
+   end subroutine
 
 
    subroutine verify_consistency(this)

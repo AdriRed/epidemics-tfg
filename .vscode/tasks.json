@@ -12,6 +12,16 @@
             ]
         },
         {
+            "label": "compile-skiplist-test",
+            "type": "shell",
+            "command": "bash",
+            "dependsOn": ["compile-include-files"],
+            "args": [
+                "-c",
+                "gfortran -g -Og -fimplicit-none -fcheck=all -fbacktrace -finit-local-zero -Wall -fcheck=bounds ${workspaceFolder}/include/mt19937_par.f90 ${workspaceFolder}/include/reversed_skiplist.f90 ${workspaceFolder}/skiplist_test.f90 -o ${workspaceFolder}/builds/skiplist_test.out"
+            ]
+        },
+        {
             "label": "compile-include-files",
             "type": "shell",
             "command": "bash",

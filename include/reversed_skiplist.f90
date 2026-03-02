@@ -27,13 +27,14 @@ module reversed_skiplist
       integer(ik) :: max_indexes
    contains
       procedure :: clear => skiplist_clear
-      procedure :: add => insert_skiplist
-      procedure :: debug_print => print_skiplist
-      procedure :: remove_entry => remove_entry
+      procedure :: add => skiplist_add
+      procedure :: debug_print => skiplist_print
+      procedure :: remove_entry => skiplist_remove_entry
+      procedure :: update_index => skiplist_update_index
    end type skiplist
 contains
 
-   subroutine print_skiplist(this)
+   subroutine skiplist_print(this)
       class(skiplist), intent(inout) :: this
       type(skiplist_entry), pointer :: previous
       integer(ik) :: i
@@ -51,7 +52,7 @@ contains
    subroutine print_node(previous)
       type(skiplist_entry), pointer :: previous
       integer(ik) :: j
-      write(*, "(F5.1, A2)", advance="no") previous%weight, ' ('
+      write(*, "(F8.1, A2)", advance="no") previous%weight, ' ('
       if (previous%indexes_count > 0) then
          write(*, "(I3)", advance="no") previous%indexes(1)
          do j = 2, previous%indexes_count
@@ -73,7 +74,43 @@ contains
 
    end function init_skiplist
 
-   subroutine insert_skiplist(this, weight, index, index_position)
+   subroutine skiplist_update_index(this, weight, position, new_value)
+      class(skiplist), intent(inout) :: this
+      real(dp), intent(in) :: weight
+      integer(ik), intent(in) :: position
+      integer(ik), intent(in) :: new_value
+      type(skiplist_entry), pointer :: current
+      integer(ik) :: level
+
+      ! Buscar el nodo con el peso dado (recorrido simple por nivel 1)
+      current => this%head%ptr
+      level = 1
+      do
+         if (.not. associated(current%next(level)%ptr)) then ! end of the line
+
+            level = level+1
+            if (level > this%max_level) exit ! final level reached
+            cycle ! if not final level reached keep searching
+         else
+            if (weight < current%next(level)%ptr%weight) then ! if next lesser
+               current => current%next(level)%ptr ! get next in line
+            else if (weight == current%next(level)%ptr%weight ) then ! insertion in node only
+               current => current%next(level)%ptr
+               exit
+            else ! if next isnt lesser, go to level below
+               level = level+1
+               if (level > this%max_level) then
+                  exit
+               end if
+            end if
+         end if
+      end do
+
+      current%indexes(position) = new_value
+
+   end subroutine
+
+   subroutine skiplist_add(this, weight, index, index_position)
       class(skiplist), intent(inout) :: this
       real(dp), intent(in) :: weight
       integer(ik), intent(in) :: index
@@ -91,7 +128,7 @@ contains
       data%indexes_count = 1
       data%indexes(1) = index
       data%total_weight = weight
-
+      if (present(index_position)) index_position = 1
       if (.not. associated(this%head%ptr)) then ! case where list is empty
          this%head%ptr => data
       else if (this%head%ptr%weight <= weight) then ! case where is going to be first
@@ -179,7 +216,7 @@ contains
 
       end if
 
-   end subroutine insert_skiplist
+   end subroutine skiplist_add
 
    subroutine skiplist_clear(this)
       class(skiplist), intent(inout) :: this
@@ -208,23 +245,32 @@ contains
 
    ! end subroutine skiplist_remove
 
-   subroutine remove_entry(this, weight, index_position, updated_position, update_value)
+   subroutine skiplist_remove_entry(this, weight, index_position, full_deletion, update_value)
       class(skiplist), intent(inout) :: this
       real(dp), intent(in) :: weight
       integer(ik), intent(in) :: index_position
-      integer(ik), intent(out), optional :: updated_position, update_value
+      integer(ik), intent(out), optional :: update_value
       type(skiplist_entry_ptr), allocatable :: previous_ptrs(:)
       type(skiplist_entry), pointer :: before_ptr, current, delete_node
       integer(ik) :: curr_lvl, i
-      logical :: full_deletion ! if full deletion needs to happen
+      logical, intent(out) :: full_deletion ! if full deletion needs to happen
+      if (.not. associated(this%head%ptr)) return 
       curr_lvl = 1
       before_ptr => this%head%ptr
       allocate(previous_ptrs(this%max_level))
       delete_node => before_ptr
+      if (delete_node%weight == weight) then ! case where head is going to be deleted
 
-      full_deletion = delete_node%indexes_count == 1_ik
+         this%head%ptr => this%head%ptr%next(this%max_indexes)%ptr
+         deallocate(delete_node%next, delete_node%indexes)
+         deallocate(delete_node)
+         deallocate(previous_ptrs)
+         return
+      end if
+
       do
          if (.not. associated(before_ptr%next(curr_lvl)%ptr)) then ! end of the line
+            previous_ptrs(curr_lvl)%ptr => before_ptr
             curr_lvl = curr_lvl+1
             if (curr_lvl > this%max_level) then
                exit ! final level reached
@@ -234,26 +280,29 @@ contains
             if (weight < before_ptr%next(curr_lvl)%ptr%weight) then ! if next lesser
                before_ptr => before_ptr%next(curr_lvl)%ptr ! get next in line
                delete_node => before_ptr
-               full_deletion = delete_node%indexes_count == 1_ik
 
             else if (weight == before_ptr%next(curr_lvl)%ptr%weight ) then ! if next is weight to remove
                delete_node => before_ptr%next(curr_lvl)%ptr
-               full_deletion = delete_node%indexes_count == 1_ik
-               if (.not. full_deletion) then ! not last index to remove
+               if (delete_node%indexes_count /= 1_ik) then ! not last index to remove
                   current => before_ptr%next(curr_lvl)%ptr
-                  if (present(updated_position)) updated_position = current%indexes_count
+                  ! No es el último índice -> solo reestructura interna
                   if (present(update_value)) update_value = current%indexes(current%indexes_count)
                   current%indexes(index_position) = current%indexes(current%indexes_count)
                   current%indexes(current%indexes_count) = 0
                   current%indexes_count = current%indexes_count - 1
+                  current%total_weight = current%total_weight - current%weight
+                  deallocate(previous_ptrs)
                   return
                end if
+
                previous_ptrs(curr_lvl)%ptr => before_ptr
+
                curr_lvl = curr_lvl+1
                if (curr_lvl > this%max_level) then
                   exit
                end if
             else ! if next isnt lesser, go to level below
+               previous_ptrs(curr_lvl)%ptr => before_ptr
                curr_lvl = curr_lvl+1
                if (curr_lvl > this%max_level) then
                   exit
@@ -262,31 +311,35 @@ contains
          end if
       end do
 
-      if (full_deletion) then ! delete node
+      if (delete_node%weight /= weight) then
+         deallocate(previous_ptrs)
+         return
+      end if
+
+      if (delete_node%indexes_count == 1_ik) then ! delete node
          do i = 1, this%max_level
             if (associated(previous_ptrs(i)%ptr)) then
                current => previous_ptrs(i)%ptr
-               current%next(i)%ptr => current%next(i)%ptr%next(i)%ptr !skip node
+               if (associated(current%next(i)%ptr)) current%next(i)%ptr => current%next(i)%ptr%next(i)%ptr !skip node
             end if
          end do
          if (associated(delete_node)) then
             if (associated(delete_node, this%head%ptr)) then
-               if (associated(this%head%ptr%next(this%max_level)%ptr)) then
-                  this%head%ptr => this%head%ptr%next(this%max_level)%ptr
-               else 
-                  this%head%ptr => null()
-               end if
+               ! if (associated(this%head%ptr%next(this%max_level)%ptr)) then
+               this%head%ptr => this%head%ptr%next(this%max_level)%ptr
+               ! else
+               !    this%head%ptr => null()
+               ! end if
             end if
-            deallocate(delete_node%indexes)
+            deallocate(delete_node%indexes, delete_node%next)
             deallocate(delete_node)
 
          end if
-         if (present(updated_position)) updated_position = 0
          if (present(update_value)) update_value = 0
       end if
 
       deallocate(previous_ptrs)
 
-   end subroutine remove_entry
+   end subroutine skiplist_remove_entry
 
 end module reversed_skiplist

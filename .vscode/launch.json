@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "(gfortran) Iniciar",
+            "name": "(gfortran) Iniciar main.f90",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/builds/main.out",
@@ -12,6 +12,26 @@
             "environment": [],
             "externalConsole": false,
             "preLaunchTask": "compile-fortran",
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Habilitar la impresión con sangría para gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": false
+                }
+            ]
+        },
+        {
+            "name": "(gfortran) Test skiplist_test.f90",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/builds/skiplist_test.out",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "preLaunchTask": "compile-skiplist-test",
             "MIMode": "gdb",
             "setupCommands": [
                 {

@@ -208,10 +208,11 @@ contains
 
    ! end subroutine skiplist_remove
 
-   subroutine remove_entry(this, weight, index_position)
+   subroutine remove_entry(this, weight, index_position, updated_position, update_value)
       class(skiplist), intent(inout) :: this
       real(dp), intent(in) :: weight
       integer(ik), intent(in) :: index_position
+      integer(ik), intent(out), optional :: updated_position, update_value
       type(skiplist_entry_ptr), allocatable :: previous_ptrs(:)
       type(skiplist_entry), pointer :: before_ptr, current, delete_node
       integer(ik) :: curr_lvl, i
@@ -219,26 +220,35 @@ contains
       curr_lvl = 1
       before_ptr => this%head%ptr
       allocate(previous_ptrs(this%max_level))
-      full_deletion = .false.
+      delete_node => before_ptr
+
+      full_deletion = delete_node%indexes_count == 1_ik
       do
          if (.not. associated(before_ptr%next(curr_lvl)%ptr)) then ! end of the line
             curr_lvl = curr_lvl+1
-            if (curr_lvl > this%max_level) exit ! final level reached
+            if (curr_lvl > this%max_level) then
+               exit ! final level reached
+            end if
             cycle ! if not final level reached keep searching
          else
             if (weight < before_ptr%next(curr_lvl)%ptr%weight) then ! if next lesser
                before_ptr => before_ptr%next(curr_lvl)%ptr ! get next in line
+               delete_node => before_ptr
+               full_deletion = delete_node%indexes_count == 1_ik
+
             else if (weight == before_ptr%next(curr_lvl)%ptr%weight ) then ! if next is weight to remove
-               full_deletion = before_ptr%next(curr_lvl)%ptr%indexes_count == 1_ik
+               delete_node => before_ptr%next(curr_lvl)%ptr
+               full_deletion = delete_node%indexes_count == 1_ik
                if (.not. full_deletion) then ! not last index to remove
                   current => before_ptr%next(curr_lvl)%ptr
+                  if (present(updated_position)) updated_position = current%indexes_count
+                  if (present(update_value)) update_value = current%indexes(current%indexes_count)
                   current%indexes(index_position) = current%indexes(current%indexes_count)
                   current%indexes(current%indexes_count) = 0
                   current%indexes_count = current%indexes_count - 1
-                  exit
+                  return
                end if
                previous_ptrs(curr_lvl)%ptr => before_ptr
-               delete_node => before_ptr%next(curr_lvl)%ptr
                curr_lvl = curr_lvl+1
                if (curr_lvl > this%max_level) then
                   exit
@@ -260,9 +270,19 @@ contains
             end if
          end do
          if (associated(delete_node)) then
+            if (associated(delete_node, this%head%ptr)) then
+               if (associated(this%head%ptr%next(this%max_level)%ptr)) then
+                  this%head%ptr => this%head%ptr%next(this%max_level)%ptr
+               else 
+                  this%head%ptr => null()
+               end if
+            end if
             deallocate(delete_node%indexes)
             deallocate(delete_node)
+
          end if
+         if (present(updated_position)) updated_position = 0
+         if (present(update_value)) update_value = 0
       end if
 
       deallocate(previous_ptrs)

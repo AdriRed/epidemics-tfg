@@ -194,7 +194,11 @@ contains
          ptr => this%ordered_weights%head%ptr
          do while ((random_numb - ptr%total_weight) .gt. 0)
             random_numb = random_numb - ptr%total_weight
-            ptr => ptr%next(this%ordered_weights%max_level)%ptr
+            if (associated(ptr%next(this%ordered_weights%max_level)%ptr)) then
+               ptr => ptr%next(this%ordered_weights%max_level)%ptr
+            else
+               exit
+            end if
          end do
 
          i = ceiling(random_numb / ptr%weight)
@@ -446,28 +450,26 @@ contains
    subroutine remove_active_link(this, idx)
       class(epidemic_simulation), intent(inout) :: this
       integer(ik), intent(in) :: idx
-      real(dp) :: weight_val, target_weight
-      integer(ik) :: old_position, target_position, update_value
+      real(dp) :: weight_to_remove, weight_to_move
+      integer(ik) :: position_to_remove, position_to_move, update_value
       logical :: full_deletion
 
       if (this%net%weighted) then
-         weight_val = this%active_links_weights(idx)
-         target_weight = this%active_links_weights(this%active_links_count)
-         old_position = this%active_links_index_position(idx)
-         target_position = this%active_links_index_position(this%active_links_count)
-         this%active_links_weights_sum = this%active_links_weights_sum - weight_val
+         weight_to_remove = this%active_links_weights(idx)
+         position_to_remove = this%active_links_index_position(idx) !
+         weight_to_move = this%active_links_weights(this%active_links_count)
+         position_to_move = this%active_links_index_position(this%active_links_count)
+         this%active_links_weights_sum = this%active_links_weights_sum - weight_to_remove
       end if
-
 
       ! update neighbours
       if (idx /= this%active_links_count) then
          call update_active_links_ptrs(this, idx, this%active_links_count)
       end if
 
-
       ! remove skiplist entry
       if (this%net%weighted) then
-         call this%ordered_weights%remove_entry(weight_val, old_position, full_deletion, update_value=update_value)
+         call this%ordered_weights%remove_entry(weight_to_remove, position_to_remove, full_deletion, update_value=update_value)
       end if
 
       this%active_links(idx, :) = this%active_links(this%active_links_count, :)
@@ -479,13 +481,10 @@ contains
          this%active_links_index_position(idx) = this%active_links_index_position(this%active_links_count)
          this%active_links_weights(this%active_links_count) = 0
          this%active_links_index_position(this%active_links_count) = 0
-         call this%ordered_weights%debug_print()
-         call this%ordered_weights%update_index(target_weight, target_position, idx)
+         call this%ordered_weights%update_index(weight_to_move, position_to_move, idx)
       end if
 
-
       this%active_links_count = this%active_links_count -1
-
    end subroutine remove_active_link
 
    subroutine verify_consistency(this)

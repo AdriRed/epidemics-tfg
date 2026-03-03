@@ -273,13 +273,17 @@ contains
             node_deletion = .false.
 
          else
-            this%head%ptr => this%head%ptr%next(this%max_level)%ptr ! pointer points to next node
-            node_deletion = .true.
-            do i = 1, this%max_level
-               if (.not. associated(this%head%ptr, delete_node%next(i)%ptr)) then
-                  this%head%ptr%next(i)%ptr => delete_node%next(i)%ptr
-               end if
-            end do
+            if (associated(this%head%ptr%next(this%max_level)%ptr)) then
+               this%head%ptr => this%head%ptr%next(this%max_level)%ptr ! pointer points to next node
+               node_deletion = .true.
+               do i = 1, this%max_level
+                  if (.not. associated(this%head%ptr, delete_node%next(i)%ptr)) then
+                     this%head%ptr%next(i)%ptr => delete_node%next(i)%ptr
+                  end if
+               end do
+            else
+               this%head%ptr => null()
+            end if
 
             deallocate(delete_node%next, delete_node%indexes)
             deallocate(delete_node)

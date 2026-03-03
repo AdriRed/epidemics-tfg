@@ -114,9 +114,10 @@ contains
 
    subroutine clear(this)
       class(epidemic_simulation), intent(inout) :: this
+      call this%weights%clear()
       deallocate(this%active_links, this%node_states, this%infected_nodes, this%neighbours_active_links_index)
       if (this%net%weighted) then
-         deallocate(this%active_links_weights)
+         deallocate(this%active_links_weights, this%active_links_positions)
       end if
    end subroutine clear
 

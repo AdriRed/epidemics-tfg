@@ -19,9 +19,9 @@ program main
    close(unit=11)
 
 
-   ! call sis_prevalence(net)
+   call sis_prevalence(net)
 
-   call execute_simulation(net, 0.05_dp, 1._dp, 42072, 500._dp, SIS_MODEL, events_unit=20, stats_unit=21)
+   ! call execute_simulation(net, 0.05_dp, 1._dp, 42072, 500._dp, SIS_MODEL, events_unit=20, stats_unit=21)
 
    ! !$omp parallel do private(i_lambdas) schedule(dynamic)
    ! do i_lambdas = 100, 1, -1
@@ -97,6 +97,7 @@ contains
          end if
       end do
       close(22)
+      call simulation%clear()
       ! close(23)
    end subroutine sis_prevalence
 

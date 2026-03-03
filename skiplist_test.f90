@@ -76,7 +76,7 @@ program test_skiplist
    ! Prueba de eliminación de nodos que no existen
    print *, "Attempting to remove non-existent nodes..."
    weight = 100.0_dp  ! Peso que no existe en la lista
-   call list%remove_entry(weight, position, full_deletion, update_value=update_value)
+   call list%remove_entry(weight, position, update_value, full_deletion)
    print *, "Attempted to remove non-existent weight:", weight, "at position:", position, "update value:", update_value
 
    ! Imprimir la lista después de intentar eliminar un nodo que no existe
@@ -87,25 +87,25 @@ program test_skiplist
    print *, "Removing all nodes..."
    ! Primero, eliminar los nodos con pesos extremos
    weight = huge(1.0_dp)
-   call list%remove_entry(weight, position, full_deletion, update_value=update_value)
+   call list%remove_entry(weight, position, update_value, full_deletion)
    print *, "Removed weight:", weight, "at position:", position, "update value:", update_value
 
    weight = tiny(1.0_dp)
-   call list%remove_entry(weight, position, full_deletion, update_value=update_value)
+   call list%remove_entry(weight, position, update_value, full_deletion)
    print *, "Removed weight:", weight, "at position:", position, "update value:", update_value
     call list%debug_print()
 
    ! Luego, eliminar los nodos con pesos intermedios
    do i = 1, max_levels
       weight = 10.0_dp - i * 1.0_dp
-      call list%remove_entry(weight, position, full_deletion, update_value=update_value)
+      call list%remove_entry(weight, position, update_value, full_deletion)
       print *, "Removed weight:", weight, "at position:", position, "update value:", update_value
       call list%debug_print()
    end do
 
    ! Finalmente, eliminar el nodo con peso duplicado
    weight = 5.0_dp
-   call list%remove_entry(weight, position, full_deletion, update_value=update_value)
+   call list%remove_entry(weight, position, update_value, full_deletion)
    print *, "Removed weight:", weight, "at position:", position, "update value:", update_value
 
    ! Imprimir la lista después de eliminar todos los nodos

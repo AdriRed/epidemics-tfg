@@ -182,17 +182,25 @@ contains
    ! returns: the selected node index
    integer(ik) function infect(this) result(chosen_node)
       class(epidemic_simulation), intent(inout) :: this
+      type(skiplist_entry), pointer :: current_node
       real(dp) :: random_numb
       integer(ik) :: chosen_link_idx, i
       if (this%net%weighted) then
          random_numb = this%rnd%grnd()*this%active_links_weights_sum
-         do i = 1, this%active_links_count
-            random_numb = random_numb-this%active_links_weights(i)
-            if (random_numb <= 0) then
-               chosen_link_idx = i
-               exit
-            end if
+         current_node => this%weights%head%ptr
+         do while (random_numb - current_node%total_weight > 0)
+            random_numb = random_numb - current_node%total_weight
+            current_node => current_node%next(this%weights%max_level)%ptr
          end do
+
+         chosen_link_idx = ceiling((current_node%total_weight - random_numb)/current_node%weight, kind=ik)
+         ! do i = 1, this%active_links_count
+         !    random_numb = random_numb-this%active_links_weights(i)
+         !    if (random_numb <= 0) then
+         !       chosen_link_idx = i
+         !       exit
+         !    end if
+         ! end do
       else
          random_numb = this%rnd%grnd()*this%active_links_count
          chosen_link_idx = int(random_numb, kind=ik)+1

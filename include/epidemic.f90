@@ -1,5 +1,6 @@
 module epidemic
    use net_loader
+   use reversed_skiplist
    use mt19937_par
    use iso_fortran_env, only: int8, int32, real64
    implicit none
@@ -58,8 +59,14 @@ module epidemic
       ! posición coincidente con neighbours y referencia a índice de active_links
       integer(ik), allocatable :: neighbours_active_links_index(:)
 
+
       integer(ik) :: recovered_nodes_count
+
+
       type(mt19937_state) :: rnd
+      type(skiplist) :: weights
+      integer(ik), allocatable :: active_links_positions(:)
+
    contains
       procedure, public :: act
       procedure, public :: get_stats
@@ -90,8 +97,9 @@ contains
          retval%neighbours_active_links_index(2*net%stats%links_count))
 
       if (net%weighted) then
-         allocate(retval%active_links_weights(2*net%stats%links_count))
+         allocate(retval%active_links_weights(2*net%stats%links_count), retval%active_links_positions(2*net%stats%links_count))
          retval%active_links_weights(:) = 0.
+         retval%weights = init_skiplist(6, seed, 0.5_dp, 140)
       end if
 
       call retval%rnd%init_genrand(seed)
@@ -407,19 +415,38 @@ contains
       class(epidemic_simulation), intent(inout) :: this
       real(dp), optional, intent(in) :: weight
       integer(ik), intent(in) :: origin_node, target_node
+      integer(ik) :: index_position
 
       this%active_links_count = this%active_links_count+1
       this%active_links(this%active_links_count, 1) = origin_node
       this%active_links(this%active_links_count, 2) = target_node
       if (this%net%weighted .and. present(weight)) then
          this%active_links_weights(this%active_links_count) = weight
+         call this%weights%add(weight, this%active_links_count, index_position)
+         ! call this%weights%debug_print()
+         this%active_links_positions(this%active_links_count) = index_position
       end if
       retval = this%active_links_count
    end function add_active_link
 
    subroutine remove_active_link(this, idx)
       class(epidemic_simulation), intent(inout) :: this
-      integer(ik) :: idx
+      integer(ik), intent(in) :: idx
+      real(dp) :: weight_to_remove
+      integer(ik) :: index_position_to_remove, updated_index, new_position
+      logical :: node_deletion
+
+
+      if (this%net%weighted) then
+         weight_to_remove = this%active_links_weights(idx)
+         index_position_to_remove = this%active_links_positions(idx)
+         call this%weights%remove_entry(weight_to_remove, index_position_to_remove, updated_index, node_deletion)
+         ! call this%weights%debug_print()
+
+         if (.not. node_deletion) then
+            this%active_links_positions(updated_index) = index_position_to_remove
+         end if
+      end if
 
       if (idx /= this%active_links_count) then
          call update_active_links_ptrs(this, idx, this%active_links_count)
@@ -429,7 +456,12 @@ contains
       if (this%net%weighted) then
          this%active_links_weights_sum = this%active_links_weights_sum - this%active_links_weights(idx)
          this%active_links_weights(idx) = this%active_links_weights(this%active_links_count)
+         this%active_links_positions(idx) = this%active_links_positions(this%active_links_count)
          this%active_links_weights(this%active_links_count) = 0.
+         this%active_links_positions(this%active_links_count) = 0.
+         if (idx /= this%active_links_count) then
+            call this%weights%update_index(this%active_links_weights(idx), this%active_links_positions(idx), idx)
+         end if
       end if
       this%active_links_count = this%active_links_count - 1
    end subroutine remove_active_link

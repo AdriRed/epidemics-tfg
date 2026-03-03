@@ -21,7 +21,7 @@ program main
 
    ! call sis_prevalence(net)
 
-   call execute_simulation(net, 0.05_dp, 1._dp, 42072, 500._dp, SIS_MODEL, events_unit=20, stats_unit=21, net_name='moreno_beach')
+   call execute_simulation(net, 0.05_dp, 1._dp, 42072, 500._dp, SIS_MODEL, events_unit=20, stats_unit=21)
 
    ! !$omp parallel do private(i_lambdas) schedule(dynamic)
    ! do i_lambdas = 100, 1, -1
@@ -101,14 +101,14 @@ contains
    end subroutine sis_prevalence
 
    subroutine execute_simulation(initialized_net, infection_rate, recovery_rate, &
-      seed, limit_time, model_type, stats_unit, events_unit, net_name)
+      seed, limit_time, model_type, stats_unit, events_unit)
       implicit none
       class(epidemic_net), intent(inout) :: initialized_net
       real(dp), intent(in) :: infection_rate, recovery_rate, limit_time
       integer(ik), intent(in) :: seed
       integer(ik), intent(in), optional :: stats_unit, events_unit
       integer(bk), intent(in) :: model_type
-      character(*), intent(in), optional :: net_name
+      ! character(70), intent(in), optional :: net_name
       type(epidemic_simulation) :: sim
       type(epidemic_step_event) :: sim_event
       type(epidemic_simulation_stats) :: sim_stats
@@ -132,13 +132,13 @@ contains
          write(name3, '(A)') trim(name2)
       end if
 
-      if (present(net_name)) then
-         write(name4, '(A, A, A)') trim(net_name), '-', trim(name3)
-      else
-         write(name4, '(A)') trim(name3)
-      end if
+      ! if (present(net_name)) then
+      !    write(name4, '(A, A, A)') trim(net_name), '-', trim(name3)
+      ! else
+      !    write(name4, '(A)') trim(name3)
+      ! end if
 
-      filename = trim(adjustl(name4))
+      filename = trim(adjustl(name3))
       ! !$omp critical(name_write)
       ! ! write(*, *) name
       ! !$omp end critical(name_write)

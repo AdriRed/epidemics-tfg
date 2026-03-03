@@ -38,6 +38,7 @@ contains
       class(skiplist), intent(inout) :: this
       type(skiplist_entry), pointer :: previous
       integer(ik) :: i
+      print*, '-------------SKIPLIST-------------'
       do i = 1, this%max_level
          previous => this%head%ptr
          write(*, "(A11, I1, A5)") "---- Level ", i, " ----"
@@ -245,24 +246,45 @@ contains
 
    ! end subroutine skiplist_remove
 
-   subroutine skiplist_remove_entry(this, weight, index_position, full_deletion, update_value)
+   subroutine skiplist_remove_entry(this, weight, index_position, update_value, node_deletion)
       class(skiplist), intent(inout) :: this
       real(dp), intent(in) :: weight
       integer(ik), intent(in) :: index_position
       integer(ik), intent(out), optional :: update_value
+      logical, intent(out), optional :: node_deletion
       type(skiplist_entry_ptr), allocatable :: previous_ptrs(:)
       type(skiplist_entry), pointer :: before_ptr, current, delete_node
       integer(ik) :: curr_lvl, i
-      logical, intent(out) :: full_deletion ! if full deletion needs to happen
-      if (.not. associated(this%head%ptr)) return 
+      if (.not. associated(this%head%ptr)) return
       curr_lvl = 1
       before_ptr => this%head%ptr
       allocate(previous_ptrs(this%max_level))
       delete_node => before_ptr
       if (delete_node%weight == weight) then ! case where head is going to be deleted
-         this%head%ptr => before_ptr%next(this%max_level)%ptr
-         deallocate(delete_node%next, delete_node%indexes)
-         deallocate(delete_node)
+
+         if (delete_node%indexes_count /= 1_ik) then ! not last index to remove
+            current => this%head%ptr
+            ! No es el último índice -> solo reestructura interna
+            if (present(update_value)) update_value = current%indexes(current%indexes_count)
+            current%indexes(index_position) = current%indexes(current%indexes_count)
+            current%indexes(current%indexes_count) = 0
+            current%indexes_count = current%indexes_count - 1
+            current%total_weight = current%total_weight - current%weight
+            node_deletion = .false.
+
+         else
+            this%head%ptr => this%head%ptr%next(this%max_level)%ptr ! pointer points to next node
+            node_deletion = .true.
+            do i = 1, this%max_level
+               if (.not. associated(this%head%ptr, delete_node%next(i)%ptr)) then
+                  this%head%ptr%next(i)%ptr => delete_node%next(i)%ptr
+               end if
+            end do
+
+            deallocate(delete_node%next, delete_node%indexes)
+            deallocate(delete_node)
+         end if
+
          deallocate(previous_ptrs)
          return
       end if
@@ -291,6 +313,8 @@ contains
                   current%indexes_count = current%indexes_count - 1
                   current%total_weight = current%total_weight - current%weight
                   deallocate(previous_ptrs)
+                  node_deletion = .false.
+
                   return
                end if
 
@@ -314,6 +338,7 @@ contains
          deallocate(previous_ptrs)
          return
       end if
+      node_deletion = .true.
 
       if (delete_node%indexes_count == 1_ik) then ! delete node
          do i = 1, this%max_level

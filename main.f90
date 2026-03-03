@@ -21,7 +21,7 @@ program main
 
    ! call sis_prevalence(net)
 
-   call execute_simulation(net, 0.05_dp, 1._dp, 42072, 500._dp, SIS_MODEL, events_unit=20)
+   call execute_simulation(net, 0.05_dp, 1._dp, 42072, 500._dp, SIS_MODEL, events_unit=20, stats_unit=21, net_name='moreno_beach')
 
    ! !$omp parallel do private(i_lambdas) schedule(dynamic)
    ! do i_lambdas = 100, 1, -1
@@ -101,29 +101,44 @@ contains
    end subroutine sis_prevalence
 
    subroutine execute_simulation(initialized_net, infection_rate, recovery_rate, &
-      seed, limit_time, model_type, stats_unit, events_unit)
+      seed, limit_time, model_type, stats_unit, events_unit, net_name)
       implicit none
       class(epidemic_net), intent(inout) :: initialized_net
       real(dp), intent(in) :: infection_rate, recovery_rate, limit_time
       integer(ik), intent(in) :: seed
       integer(ik), intent(in), optional :: stats_unit, events_unit
       integer(bk), intent(in) :: model_type
+      character(*), intent(in), optional :: net_name
       type(epidemic_simulation) :: sim
       type(epidemic_step_event) :: sim_event
       type(epidemic_simulation_stats) :: sim_stats
       logical :: should_write_stats, should_write_events
 
-      character(70) :: name
+      character(70) :: name1, name2, name3, name4
       integer(ik) :: i_sim, node_id
       character(len=:), allocatable :: filename
 
+      write(name1, '(A,F10.5,A,F10.5,A,I5)') 'I=', infection_rate, '-R=', recovery_rate, '-S=', seed
+
       if (model_type == SIR_MODEL) then
-         write(name, '(A,F10.5,A,F10.5,A,I5)') 'SIR-I=', infection_rate, '-R=', recovery_rate, '-S=', seed
-      else if (model_type == SIS_MODEL) then
-         write(name, '(A,F10.5,A,F10.5,A,I5)') 'SIS-I=', infection_rate, '-R=', recovery_rate, '-S=', seed
+         write(name2, '(A, A)') 'SIR-', trim(name1)
+      else
+         write(name2, '(A, A)') 'SIS-', trim(name1)
       end if
 
-      filename = trim(adjustl(name))
+      if (net%weighted) then
+         write(name3, '(A, A)') 'w', trim(name2)
+      else
+         write(name3, '(A)') trim(name2)
+      end if
+
+      if (present(net_name)) then
+         write(name4, '(A, A, A)') trim(net_name), '-', trim(name3)
+      else
+         write(name4, '(A)') trim(name3)
+      end if
+
+      filename = trim(adjustl(name4))
       ! !$omp critical(name_write)
       ! ! write(*, *) name
       ! !$omp end critical(name_write)
@@ -142,11 +157,16 @@ contains
       sim%recovery_rate = recovery_rate
       i_sim = 0
       !$omp critical(file_write)
-      if (should_write_stats) open(unit=stats_unit, file='./output/stats-'// filename //'.dat', action='write')
+      if (should_write_stats) then 
+         open(unit=stats_unit, file='./output/stats-'// filename //'.dat', action='write')
+         write(stats_unit, *) '# time, infection_rate, recovery_rate, infected_density, recovered_density'
+      end if
       if (should_write_events) then
          open(unit=events_unit, file='./output/events-'// filename //'.dat', action='write')
          call initialized_net%rev_hashmap%get(1, node_id)
-         write(events_unit, "(E20.10, I10, A2)") sim%time, node_id, 'I' 
+         write(events_unit, *) '# time, node_id, event'
+         
+         write(events_unit, "(E20.10, I10, A2)") sim%time, node_id, 'I'
       end if
       !$omp end critical(file_write)
       write(*, '(A,F10.5,A,I5,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=start'

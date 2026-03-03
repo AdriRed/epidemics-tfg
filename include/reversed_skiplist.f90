@@ -260,8 +260,7 @@ contains
       allocate(previous_ptrs(this%max_level))
       delete_node => before_ptr
       if (delete_node%weight == weight) then ! case where head is going to be deleted
-
-         this%head%ptr => this%head%ptr%next(this%max_indexes)%ptr
+         this%head%ptr => before_ptr%next(this%max_level)%ptr
          deallocate(delete_node%next, delete_node%indexes)
          deallocate(delete_node)
          deallocate(previous_ptrs)
@@ -320,7 +319,11 @@ contains
          do i = 1, this%max_level
             if (associated(previous_ptrs(i)%ptr)) then
                current => previous_ptrs(i)%ptr
-               if (associated(current%next(i)%ptr)) current%next(i)%ptr => current%next(i)%ptr%next(i)%ptr !skip node
+               if (associated(current%next(i)%ptr)) then
+                  current%next(i)%ptr => current%next(i)%ptr%next(i)%ptr !skip node
+               else
+                  current%next(i)%ptr => null()
+               end if
             end if
          end do
          if (associated(delete_node)) then

@@ -73,7 +73,6 @@ module epidemic
       procedure, private :: recover
       procedure, private :: advance_time
       procedure, private :: remove_active_link
-      procedure, private :: update_active_links_ptrs
       procedure, private :: add_active_link
    end type epidemic_simulation
 
@@ -232,9 +231,6 @@ contains
       end do
 
       ! if not last active link in list, override this position with last active link
-      if (active_link_idx /= this%active_links_count) then
-         call this%update_active_links_ptrs(active_link_idx, this%active_links_count)
-      end if
 
       call this%remove_active_link(active_link_idx)
 
@@ -285,10 +281,6 @@ contains
                   ! if current neighbour link is valid
                   if (neighbor_link_idx > 0 .and. neighbor_link_idx <= this%active_links_count) then
                      ! if current neighbour link is not last update all pointers
-                     if (neighbor_link_idx /= this%active_links_count) then
-                        call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count)
-                     end if
-
                      ! remove active link
                      call this%remove_active_link(neighbor_link_idx)
                      ! reset index
@@ -302,9 +294,6 @@ contains
             neighbor_link_idx = this%neighbours_active_links_index(i)
             if (neighbor_link_idx > 0 .and. neighbor_link_idx <= this%active_links_count) then
                write(*,*) "WARNING: Active link between two infected nodes found"
-               if (neighbor_link_idx /= this%active_links_count) then
-                  call this%update_active_links_ptrs(neighbor_link_idx, this%active_links_count)
-               end if
 
                call this%remove_active_link(neighbor_link_idx)
                this%neighbours_active_links_index(i) = 0
@@ -361,9 +350,6 @@ contains
             if (this%active_links(link_idx, 1) == recovered_node .and. &
                this%active_links(link_idx, 2) == this%net%neighbours(i)) then
                ! remove active link
-               if (link_idx /= this%active_links_count) then
-                  call this%update_active_links_ptrs(link_idx, this%active_links_count)
-               end if
                call this%remove_active_link(link_idx)
             end if
             ! reset index
@@ -434,6 +420,11 @@ contains
    subroutine remove_active_link(this, idx)
       class(epidemic_simulation), intent(inout) :: this
       integer(ik) :: idx
+
+      if (idx /= this%active_links_count) then
+         call update_active_links_ptrs(this, idx, this%active_links_count)
+      end if
+
       this%active_links(idx, :) = this%active_links(this%active_links_count, :)
       if (this%net%weighted) then
          this%active_links_weights_sum = this%active_links_weights_sum - this%active_links_weights(idx)

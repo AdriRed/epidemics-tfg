@@ -99,7 +99,7 @@ contains
       if (net%weighted) then
          allocate(retval%active_links_weights(2*net%stats%links_count), retval%active_links_positions(2*net%stats%links_count))
          retval%active_links_weights(:) = 0.
-         retval%weights = init_skiplist(6, seed, 0.5_dp, 140)
+         retval%weights = init_skiplist(6, seed, 0.75_dp, 140)
       end if
 
       call retval%rnd%init_genrand(seed)

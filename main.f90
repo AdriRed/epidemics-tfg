@@ -66,7 +66,7 @@ contains
       ! delta
       simulation%recovery_rate = 1
       simulation%infection_rate = 1
-      open(unit=22, file='density_by_rate_unweighted.dat', action='write')
+      open(unit=22, file='density_by_rate_weighted.dat', action='write')
       ! open(unit=23, file='density_by_rate_weighted_events.dat', action='write')
       do i_sim = 100, 1, -1
          ! lambda

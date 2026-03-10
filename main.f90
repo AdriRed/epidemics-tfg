@@ -10,18 +10,19 @@ program main
 
    type(epidemic_net) :: net
    integer :: i_lambdas
-   open(unit=11, file='./nets/out.moreno_beach_beach', action='read')
-   ! open(unit=11, file='./nets/musae_git_edges.csv', action='read')
+   character(:), allocatable :: name
+   ! open(unit=11, file='./nets/out.moreno_beach_beach', action='read')
+   open(unit=11, file='./nets/musae_git_edges.csv', action='read')
 
-   net = initialize_net(11, weighted=.true.)
+   net = initialize_net(11, weighted=.false.)
    call net%hashmap%clear()
    call net%print_stats()
    close(unit=11)
 
 
-   call sis_prevalence(net)
-
-   ! call execute_simulation(net, 0.05_dp, 1._dp, 42072, 500._dp, SIS_MODEL, events_unit=20, stats_unit=21)
+   ! call sis_prevalence(net)
+   name = 'musae_git_edges'
+   call execute_simulation(net, 2._dp, 1._dp, 42072, 500._dp, SIR_MODEL, stats_unit=21, events_unit=22, net_name=name)
 
    ! !$omp parallel do private(i_lambdas) schedule(dynamic)
    ! do i_lambdas = 100, 1, -1
@@ -57,9 +58,12 @@ contains
       integer(ik) :: i_sim, node_id
       simulation = initialize_simulation(init_net, 42070, SIS_MODEL)
       ! set all nodes infected
+
       do i_sim = 1, init_net%stats%nodes_count
          call simulation%set_infected_node(i_sim)
       end do
+
+
       eval_time = 0.
       time_limit = 600.
       relax_time = 50.
@@ -102,22 +106,23 @@ contains
    end subroutine sis_prevalence
 
    subroutine execute_simulation(initialized_net, infection_rate, recovery_rate, &
-      seed, limit_time, model_type, stats_unit, events_unit)
+      seed, limit_time, model_type, stats_unit, events_unit, net_name)
       implicit none
       class(epidemic_net), intent(inout) :: initialized_net
       real(dp), intent(in) :: infection_rate, recovery_rate, limit_time
       integer(ik), intent(in) :: seed
       integer(ik), intent(in), optional :: stats_unit, events_unit
       integer(bk), intent(in) :: model_type
-      ! character(70), intent(in), optional :: net_name
+      character(:), intent(in), allocatable, optional :: net_name
       type(epidemic_simulation) :: sim
       type(epidemic_step_event) :: sim_event
       type(epidemic_simulation_stats) :: sim_stats
       logical :: should_write_stats, should_write_events
 
-      character(70) :: name1, name2, name3, name4
-      integer(ik) :: i_sim, node_id
+      character(70) :: name1, name2, name3
+      integer(ik) :: i_sim, node_id, max_degree, max_degree_node_index
       character(len=:), allocatable :: filename
+      filename = ''
 
       write(name1, '(A,F10.5,A,F10.5,A,I5)') 'I=', infection_rate, '-R=', recovery_rate, '-S=', seed
 
@@ -133,23 +138,24 @@ contains
          write(name3, '(A)') trim(name2)
       end if
 
-      ! if (present(net_name)) then
-      !    write(name4, '(A, A, A)') trim(net_name), '-', trim(name3)
-      ! else
-      !    write(name4, '(A)') trim(name3)
-      ! end if
-
-      filename = trim(adjustl(name3))
-      ! !$omp critical(name_write)
-      ! ! write(*, *) name
-      ! !$omp end critical(name_write)
+      if (present(net_name)) then
+         filename= trim(net_name) // '-' // trim(name3)
+      else
+         filename= trim(name3)
+      end if
+      !$omp critical(name_write)
+      write(*, '(A, A)') 'Filename will be ', filename
+      !$omp end critical(name_write)
 
       sim = initialize_simulation(initialized_net, seed, model_type)
-      ! set all nodes infected
-      ! do i_sim = 1, initialized_net%stats%nodes_count
-      !    call sim%set_infected_node(i_sim)
-      ! end do
-      call sim%set_infected_node(1)
+
+      max_degree = 0
+      do i_sim = 1, initialized_net%stats%nodes_count
+         if (initialized_net%degree(i_sim) > max_degree) then
+            max_degree = initialized_net%degree(i_sim)
+            max_degree_node_index = i_sim
+         end if
+      end do
 
       should_write_stats = present(stats_unit)
       should_write_events = present(events_unit)
@@ -157,17 +163,65 @@ contains
       sim%infection_rate = infection_rate
       sim%recovery_rate = recovery_rate
       i_sim = 0
+      call sim%set_infected_node(max_degree_node_index)
+      call initialized_net%rev_hashmap%get(1, node_id)
+
       !$omp critical(file_write)
-      if (should_write_stats) then 
+      if (should_write_stats) then
          open(unit=stats_unit, file='./output/stats-'// filename //'.dat', action='write')
-         write(stats_unit, *) '# time, infection_rate, recovery_rate, infected_density, recovered_density'
+         write(stats_unit, *) '# Epidemic simulation - stats'
+         if (initialized_net%weighted) then
+            write(stats_unit, *) '# Weighted: YES'
+
+         else
+            write(stats_unit, *) '# Weighted: NO'
+         end if
+         if (model_type == SIR_MODEL) then
+            write(stats_unit, *) '# Model: SIR'
+         else
+            write(stats_unit, *) '# Model: SIS'
+         end if
+
+         if (present(net_name)) then
+            write(stats_unit, *) '# Net name: ', net_name
+         end if
+         write(stats_unit, *) '# Using mt19993 random generator with seed: ', seed
+         write(stats_unit, *) '# Infection rate: ', infection_rate
+         write(stats_unit, *) '# Recovery rate: ', recovery_rate
+         write(stats_unit, *) '# Start node: ', node_id
+         write(stats_unit, *) '# Start node degree: ', max_degree
+         write(stats_unit, *) '# -----------------------------------------------------'
+         write(stats_unit, *) '# time, infected_density, recovered_density, actual_infection_rate, actual_recovery_rate'
+
       end if
       if (should_write_events) then
          open(unit=events_unit, file='./output/events-'// filename //'.dat', action='write')
-         call initialized_net%rev_hashmap%get(1, node_id)
+
+         write(events_unit, *) '# Epidemic simulation - events'
+         if (initialized_net%weighted) then
+            write(events_unit, *) '# Weighted: YES'
+
+         else
+            write(events_unit, *) '# Weighted: NO'
+         end if
+         if (model_type == SIR_MODEL) then
+            write(events_unit, *) '# Model: SIR'
+         else
+            write(events_unit, *) '# Model: SIS'
+         end if
+
+         if (present(net_name)) then
+            write(events_unit, *) '# Net name: ', net_name
+         end if
+         write(events_unit, *) '# Using mt19993 random generator with seed: ', seed
+         write(events_unit, *) '# Infection rate: ', infection_rate
+         write(events_unit, *) '# Recovery rate: ', recovery_rate
+         write(events_unit, *) '# Start node: ', node_id
+         write(events_unit, *) '# Start node degree: ', max_degree
+         write(events_unit, *) '# -----------------------------------------------------'
+
+
          write(events_unit, *) '# time, node_id, event'
-         
-         write(events_unit, "(E20.10, I10, A2)") sim%time, node_id, 'I'
       end if
       !$omp end critical(file_write)
       write(*, '(A,F10.5,A,I5,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=start'
@@ -179,8 +233,8 @@ contains
 
             !$omp critical(file_write)
             write(stats_unit, "(E20.10, E20.10, E20.10, E20.10, E20.10)") sim%time, &
-               sim_stats%rates%actual_infection_rate, sim_stats%rates%actual_recovery_rate, &
-               sim_stats%infected_density, sim_stats%recovered_density
+               sim_stats%infected_density, sim_stats%recovered_density, &
+               sim_stats%rates%actual_infection_rate, sim_stats%rates%actual_recovery_rate
             !$omp end critical(file_write)
          end if
 

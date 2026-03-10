@@ -5,7 +5,7 @@
   "use_signature_help": true,
   "excl_paths": ["tests/**", "tools/**"],
   "excl_suffixes": ["_skip.f90"],
-  "include_dirs": ["include/**"],
+  "include_dirs": ["include/**", "."],
   "pp_suffixes": [".f90", ".h"],
   "pp_defs": { "HAVE_HDF5": "", "MPI_Comm": "integer" }
   

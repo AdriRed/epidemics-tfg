@@ -97,7 +97,8 @@ contains
          retval%neighbours_active_links_index(2*net%stats%links_count))
 
       if (net%weighted) then
-         allocate(retval%active_links_weights(2*net%stats%links_count), retval%active_links_positions(2*net%stats%links_count))
+         allocate(retval%active_links_weights(2*net%stats%links_count))
+         allocate(retval%active_links_positions(2*net%stats%links_count))
          retval%active_links_weights(:) = 0.
          retval%weights = init_skiplist(6, seed, 0.75_dp, 140)
       end if
@@ -114,9 +115,9 @@ contains
 
    subroutine clear(this)
       class(epidemic_simulation), intent(inout) :: this
-      call this%weights%clear()
       deallocate(this%active_links, this%node_states, this%infected_nodes, this%neighbours_active_links_index)
       if (this%net%weighted) then
+         call this%weights%clear()
          deallocate(this%active_links_weights, this%active_links_positions)
       end if
    end subroutine clear

@@ -120,6 +120,9 @@ compile_with_dependencies() {
 # rm -f "$BUILD_DIR"/*.mod
 
 # Ejecutar compilación con resolución de dependencias
+
+mkdir -p builds
+
 if compile_with_dependencies; then
     # Copiar todos los .mod a include para el linter
     cp "$BUILD_DIR"/*.mod "$INCLUDE_DIR/" 2>/dev/null || true

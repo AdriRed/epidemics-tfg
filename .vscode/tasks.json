@@ -12,6 +12,16 @@
             ]
         },
         {
+            "label": "compile-fortran-main2",
+            "type": "shell",
+            "command": "bash",
+            "dependsOn": ["compile-include-files"],
+            "args": [
+                "-c",
+                "gfortran -g -Og -fimplicit-none -fcheck=all -fbacktrace -finit-local-zero -Wall -fcheck=bounds main2.f90 -I${workspaceFolder}/include ${workspaceFolder}/builds/*.o -o ${workspaceFolder}/builds/main.out"
+            ]
+        },
+        {
             "label": "compile-skiplist-test",
             "type": "shell",
             "command": "bash",

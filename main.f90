@@ -11,6 +11,7 @@ program main
    type(epidemic_net) :: net
    integer :: i_lambdas
    character(:), allocatable :: name
+   
    ! open(unit=11, file='./nets/out.moreno_beach_beach', action='read')
    open(unit=11, file='./nets/musae_git_edges.csv', action='read')
 

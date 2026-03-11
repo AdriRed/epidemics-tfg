@@ -22,6 +22,38 @@
             ]
         },
         {
+            "name": "(gfortran) Iniciar main2.f90",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/builds/main.out",
+            "args": [
+                "-i",
+                "0.5",
+                "-r",
+                "1.0",
+                "-m",
+                "SIR",
+                "-lt",
+                "50",
+                "-st",
+                "-ev",
+                "./nets/inf-openflights_GC.edge"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "preLaunchTask": "compile-fortran-main2",
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Habilitar la impresión con sangría para gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": false
+                }
+            ]
+        },
+        {
             "name": "(gfortran) Test skiplist_test.f90",
             "type": "cppdbg",
             "request": "launch",

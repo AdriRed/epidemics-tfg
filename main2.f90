@@ -11,6 +11,7 @@ program main
    type :: simulation_config
       character(:), allocatable :: net_filename
       character(:), allocatable :: net_name
+      character(:), allocatable :: output_dir  ! <-- Nueva variable
       real(dp) :: infection_rate
       real(dp) :: recovery_rate
       real(dp) :: limit_time
@@ -67,7 +68,7 @@ contains
       ! Procesar argumentos
       n_args = command_argument_count()
       i = 1
-5      do while (i <= n_args)
+5     do while (i <= n_args)
          call get_command_argument(i, arg)
          trimmed_arg = trim(arg)
 
@@ -93,6 +94,8 @@ contains
             config%save_events = .true.
          else if (trimmed_arg == '--stats' .or. trimmed_arg == '-st') then
             config%save_stats = .true.
+         else if (trimmed_arg == '--output-dir' .or. trimmed_arg == '-o') then  ! <-- Nueva opción
+            call read_string_arg(i, n_args, 'output-dir', config%output_dir)
          else
             call handle_network_file(arg, config%net_filename, net_file_set)
          end if
@@ -143,6 +146,8 @@ contains
       write(*, '(A)') '  -w, --weighted                  Indica que la red es ponderada'
       write(*, '(A)') ''
       write(*, '(A)') 'ARCHIVOS DE SALIDA:'
+      write(*, '(A)') '  -o, --output                   Carpeta de salida de archivos'
+      write(*, '(A)') '  -st, --stats                   (./output)'
       write(*, '(A)') '  -st, --stats                    Guardar archivo de estadísticas'
       write(*, '(A)') '                                 (./output/stats-NOMBRE_red-I...dat)'
       write(*, '(A)') '  -ev, --events                   Guardar archivo de eventos'
@@ -188,6 +193,7 @@ contains
       config%seed = 0
       config%stats_unit = 21
       config%events_unit = 22
+      config%output_dir = './output'  ! <-- Valor por defecto
    end subroutine set_default_config
 
    subroutine read_real_arg(i, n_args, arg_name, value)
@@ -204,6 +210,32 @@ contains
       read(arg, *, iostat=io) value
       if (io /= 0) call argument_error('Valor inválido para ' // arg_name)
    end subroutine read_real_arg
+
+   subroutine read_string_arg(i, n_args, arg_name, value)
+      integer, intent(inout) :: i
+      integer, intent(in) :: n_args
+      character(*), intent(in) :: arg_name
+      character(:), allocatable, intent(out) :: value
+      character(len=256) :: arg
+      integer :: len_arg
+
+      i = i + 1
+      if (i > n_args) then
+         write(*,*) 'Error: Falta valor para ', arg_name
+         stop 1
+      end if
+
+      call get_command_argument(i, arg)
+      len_arg = len_trim(arg)
+
+      if (len_arg == 0) then
+         write(*,*) 'Error: Valor vacío para ', arg_name
+         stop 1
+      end if
+
+      allocate(character(len_arg) :: value)
+      value = arg(1:len_arg)
+   end subroutine read_string_arg
 
    subroutine read_integer_arg(i, n_args, arg_name, value)
       integer, intent(inout) :: i
@@ -371,22 +403,22 @@ contains
       if (config%save_stats .and. config%save_events) then
          call execute_simulation(net, config%infection_rate, config%recovery_rate, &
             int(config%seed, ik), config%limit_time, &
-            config%model_type, stats_unit=config%stats_unit, &
+            config%model_type, config%output_dir, stats_unit=config%stats_unit, &
             events_unit=config%events_unit, net_name=config%net_name)
       else if (config%save_stats) then
          call execute_simulation(net, config%infection_rate, config%recovery_rate, &
             int(config%seed, ik), config%limit_time, &
-            config%model_type, stats_unit=config%stats_unit, &
+            config%model_type, config%output_dir, stats_unit=config%stats_unit, &
             net_name=config%net_name)
       else if (config%save_events) then
          call execute_simulation(net, config%infection_rate, config%recovery_rate, &
             int(config%seed, ik), config%limit_time, &
-            config%model_type, events_unit=config%events_unit, &
+            config%model_type, config%output_dir, events_unit=config%events_unit, &
             net_name=config%net_name)
       else
          call execute_simulation(net, config%infection_rate, config%recovery_rate, &
             int(config%seed, ik), config%limit_time, &
-            config%model_type, net_name=config%net_name)
+            config%model_type, config%output_dir, net_name=config%net_name)
       end if
    end subroutine run_simulation
 
@@ -514,7 +546,7 @@ contains
    !===============================================================================
 
    subroutine execute_simulation(initialized_net, infection_rate, recovery_rate, &
-      seed, limit_time, model_type, stats_unit, events_unit, net_name)
+      seed, limit_time, model_type, output_dir, stats_unit, events_unit, net_name)
       implicit none
       class(epidemic_net), intent(inout) :: initialized_net
       real(dp), intent(in) :: infection_rate, recovery_rate, limit_time
@@ -529,6 +561,7 @@ contains
       logical :: should_write_stats, should_write_events
       integer(ik) :: node_id, start_node_index, start_node_degree, start_node_id
       character(:), allocatable :: filename
+      character(*), intent(in) :: output_dir  ! <-- Nuevo parámetro
 
       ! Encontrar nodo de grado máximo para iniciar
       start_node_index = find_max_degree_node(initialized_net)
@@ -557,7 +590,7 @@ contains
       call open_output_files(initialized_net, stats_unit, events_unit, filename, &
          model_type, seed, infection_rate, recovery_rate, &
          start_node_id, start_node_degree, net_name, &
-         should_write_stats, should_write_events)
+         should_write_stats, should_write_events, output_dir)
 
       ! Ejecutar simulación
       call run_simulation_loop(sim, initialized_net, stats_unit, events_unit, &
@@ -573,7 +606,7 @@ contains
    subroutine open_output_files(net, stats_unit, events_unit, filename, &
       model_type, seed, infection_rate, recovery_rate, &
       start_node_id, start_node_degree, net_name, &
-      should_write_stats, should_write_events)
+      should_write_stats, should_write_events, output_dir)
       type(epidemic_net), intent(in) :: net
       integer(ik), intent(in), optional :: stats_unit, events_unit
       character(*), intent(in) :: filename
@@ -583,16 +616,17 @@ contains
       integer(ik), intent(in) :: start_node_id, start_node_degree
       character(*), intent(in), optional :: net_name
       logical, intent(in) :: should_write_stats, should_write_events
+      character(*), intent(in) :: output_dir  ! <-- Nuevo parámetro
 
       !$omp critical(file_write)
       if (should_write_stats) then
-         open(unit=stats_unit, file='./output/stats-' // filename // '.dat', action='write')
+         open(unit=stats_unit, file=output_dir // '/stats-' // filename // '.dat', action='write')
          call write_stats_header(stats_unit, net, model_type, seed, infection_rate, &
             recovery_rate, start_node_id, start_node_degree, net_name)
       end if
 
       if (should_write_events) then
-         open(unit=events_unit, file='./output/events-' // filename // '.dat', action='write')
+         open(unit=events_unit, file=output_dir // '/events-' // filename // '.dat', action='write')
          call write_events_header(events_unit, net, model_type, seed, infection_rate, &
             recovery_rate, start_node_id, start_node_degree, net_name)
       end if

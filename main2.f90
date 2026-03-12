@@ -17,9 +17,11 @@ program main
       real(dp) :: limit_time
       integer(bk) :: model_type
       integer :: seed
+      integer :: start_node
       logical :: weighted
       logical :: save_stats
       logical :: save_events
+      logical :: has_start_node
       integer :: stats_unit
       integer :: events_unit
    end type simulation_config
@@ -27,7 +29,6 @@ program main
 
    type(epidemic_net) :: network
    type(simulation_config) :: configuration
-   integer :: io_status
 
    ! Procesar argumentos de línea de comandos
    configuration = parse_arguments()
@@ -54,7 +55,7 @@ contains
 
    function parse_arguments() result(config)
       type(simulation_config) :: config
-      integer :: i, n_args, seed_value
+      integer :: i, n_args
       character(len=256) :: arg
       character(len=:), allocatable :: trimmed_arg  ! <-- Añadir esta variable
       logical :: infection_rate_set, recovery_rate_set, model_set, net_file_set
@@ -68,7 +69,7 @@ contains
       ! Procesar argumentos
       n_args = command_argument_count()
       i = 1
-5     do while (i <= n_args)
+      do while (i <= n_args)
          call get_command_argument(i, arg)
          trimmed_arg = trim(arg)
 
@@ -81,6 +82,9 @@ contains
          else if (trimmed_arg == '--recovery-rate' .or. trimmed_arg == '-r') then
             call read_real_arg(i, n_args, 'recovery-rate', config%recovery_rate)
             recovery_rate_set = .true.
+         else if (trimmed_arg == '--start-node' .or. trimmed_arg == '-sn') then
+            call read_integer_arg(i, n_args, 'start-node', config%start_node)
+            config%has_start_node = .true.
          else if (trimmed_arg == '--model' .or. trimmed_arg == '-m') then
             call read_model_arg(i, n_args, config%model_type)
             model_set = .true.
@@ -142,8 +146,9 @@ contains
       write(*, '(A)') ''
       write(*, '(A)') '  -lt, --limit-time VALOR        Tiempo máximo de simulación (default: 50.0)'
       write(*, '(A)') '  -s, --seed VALOR               Semilla para el generador aleatorio'
-      write(*, '(A)') '                                 (default: tiempo del sistema)'
-      write(*, '(A)') '  -w, --weighted                  Indica que la red es ponderada'
+      write(*, '(A)') '  -sn, --start-node              Indica el nodo inicial para infectar'
+      write(*, '(A)') '                                 (default: el nodo con degree más alto)'
+      write(*, '(A)') '  -w, --weighted                 Indica que la red es ponderada'
       write(*, '(A)') ''
       write(*, '(A)') 'ARCHIVOS DE SALIDA:'
       write(*, '(A)') '  -o, --output                   Carpeta de salida de archivos'
@@ -189,8 +194,10 @@ contains
       config%weighted = .false.
       config%save_stats = .false.
       config%save_events = .false.
+      config%has_start_node = .false.
       config%limit_time = 50.0_dp
       config%seed = 0
+      config%start_node = -1
       config%stats_unit = 21
       config%events_unit = 22
       config%output_dir = './output'  ! <-- Valor por defecto
@@ -257,7 +264,6 @@ contains
       integer, intent(in) :: n_args
       integer(bk), intent(out) :: model_type
       character(len=256) :: arg
-      integer :: io
 
       i = i + 1
       if (i > n_args) call argument_error('Falta valor para model (SIR/SIS)')
@@ -360,11 +366,11 @@ contains
       character(*), intent(in) :: filename
       logical, intent(in) :: weighted
       type(epidemic_net) :: net
-      integer :: io_status, unit
+      integer :: io, unit
 
       unit = 11
-      open(unit=unit, file=filename, action='read', status='old', iostat=io_status)
-      if (io_status /= 0) then
+      open(unit=unit, file=filename, action='read', status='old', iostat=io)
+      if (io /= 0) then
          write(*,*) 'Error: No se puede abrir el archivo ', filename
          stop 1
       end if
@@ -389,6 +395,12 @@ contains
       write(*,*) 'Infection rate: ', config%infection_rate
       write(*,*) 'Recovery rate: ', config%recovery_rate
       write(*,*) 'Limit time: ', config%limit_time
+      write(*,*) 'Carpeta de output: ', config%output_dir
+      if (config%has_start_node) then
+         write(*,*) 'Nodo inicial: ', config%start_node
+      else
+         write(*,*) 'Nodo inicial: auto'
+      end if
       write(*,*) 'Seed: ', config%seed
       write(*,*) 'Weighted: ', config%weighted
       write(*,*) 'Guardar stats: ', config%save_stats
@@ -401,24 +413,52 @@ contains
       type(simulation_config), intent(in) :: config
 
       if (config%save_stats .and. config%save_events) then
-         call execute_simulation(net, config%infection_rate, config%recovery_rate, &
-            int(config%seed, ik), config%limit_time, &
-            config%model_type, config%output_dir, stats_unit=config%stats_unit, &
-            events_unit=config%events_unit, net_name=config%net_name)
+         if (config%has_start_node) then
+            call execute_simulation(net, config%infection_rate, config%recovery_rate, &
+               int(config%seed, ik), config%limit_time, &
+               config%model_type, config%output_dir, start_node=config%start_node, stats_unit=config%stats_unit, &
+               events_unit=config%events_unit, net_name=config%net_name)
+         else
+            call execute_simulation(net, config%infection_rate, config%recovery_rate, &
+               int(config%seed, ik), config%limit_time, &
+               config%model_type, config%output_dir, stats_unit=config%stats_unit, &
+               events_unit=config%events_unit, net_name=config%net_name)
+         end if
+
       else if (config%save_stats) then
-         call execute_simulation(net, config%infection_rate, config%recovery_rate, &
-            int(config%seed, ik), config%limit_time, &
-            config%model_type, config%output_dir, stats_unit=config%stats_unit, &
-            net_name=config%net_name)
+         if (config%has_start_node) then
+            call execute_simulation(net, config%infection_rate, config%recovery_rate, &
+               int(config%seed, ik), config%limit_time, &
+               config%model_type, config%output_dir, start_node=config%start_node, stats_unit=config%stats_unit, &
+               net_name=config%net_name)
+         else
+            call execute_simulation(net, config%infection_rate, config%recovery_rate, &
+               int(config%seed, ik), config%limit_time, &
+               config%model_type, config%output_dir, stats_unit=config%stats_unit, &
+               net_name=config%net_name)
+         end if
       else if (config%save_events) then
-         call execute_simulation(net, config%infection_rate, config%recovery_rate, &
-            int(config%seed, ik), config%limit_time, &
-            config%model_type, config%output_dir, events_unit=config%events_unit, &
-            net_name=config%net_name)
+         if (config%has_start_node) then
+            call execute_simulation(net, config%infection_rate, config%recovery_rate, &
+               int(config%seed, ik), config%limit_time, &
+               config%model_type, config%output_dir, start_node=config%start_node, events_unit=config%events_unit, &
+               net_name=config%net_name)
+         else
+            call execute_simulation(net, config%infection_rate, config%recovery_rate, &
+               int(config%seed, ik), config%limit_time, &
+               config%model_type, config%output_dir, events_unit=config%events_unit, &
+               net_name=config%net_name)
+         end if
       else
-         call execute_simulation(net, config%infection_rate, config%recovery_rate, &
-            int(config%seed, ik), config%limit_time, &
-            config%model_type, config%output_dir, net_name=config%net_name)
+         if (config%has_start_node) then
+            call execute_simulation(net, config%infection_rate, config%recovery_rate, &
+               int(config%seed, ik), config%limit_time, &
+               config%model_type, config%output_dir, start_node=config%start_node, net_name=config%net_name)
+         else
+            call execute_simulation(net, config%infection_rate, config%recovery_rate, &
+               int(config%seed, ik), config%limit_time, &
+               config%model_type, config%output_dir, net_name=config%net_name)
+         end if
       end if
    end subroutine run_simulation
 
@@ -546,26 +586,29 @@ contains
    !===============================================================================
 
    subroutine execute_simulation(initialized_net, infection_rate, recovery_rate, &
-      seed, limit_time, model_type, output_dir, stats_unit, events_unit, net_name)
+      seed, limit_time, model_type, output_dir, start_node, stats_unit, events_unit, net_name)
       implicit none
       class(epidemic_net), intent(inout) :: initialized_net
       real(dp), intent(in) :: infection_rate, recovery_rate, limit_time
       integer(ik), intent(in) :: seed
-      integer(ik), intent(in), optional :: stats_unit, events_unit
+      integer(ik), intent(in), optional :: stats_unit, events_unit, start_node
       integer(bk), intent(in) :: model_type
       character(:), intent(in), allocatable, optional :: net_name
 
       type(epidemic_simulation) :: sim
-      type(epidemic_step_event) :: sim_event
-      type(epidemic_simulation_stats) :: sim_stats
       logical :: should_write_stats, should_write_events
-      integer(ik) :: node_id, start_node_index, start_node_degree, start_node_id
+      integer(ik) :: start_node_index, start_node_degree, start_node_id
       character(:), allocatable :: filename
       character(*), intent(in) :: output_dir  ! <-- Nuevo parámetro
 
       ! Encontrar nodo de grado máximo para iniciar
-      start_node_index = find_max_degree_node(initialized_net)
+      if (present(start_node)) then
+         call initialized_net%hashmap%get(start_node, start_node_index)
+      else
+         start_node_index = find_max_degree_node(initialized_net)
+      end if
       start_node_degree = initialized_net%degree(start_node_index)
+
       call initialized_net%rev_hashmap%get(start_node_index, start_node_id)
 
       ! Generar nombre de archivo

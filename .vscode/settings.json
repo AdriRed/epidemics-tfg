@@ -1,5 +1,5 @@
 {
-    "fortran.linter.includePaths": ["${workspaceFolder}/include"],
+    "fortran.linter.includePaths": ["${workspaceFolder}/include", "${workspaceFolder}"],
     "fortran.fortls.disabled": false,
     "fortran.fortls.configure": "${workspaceFolder/fortls.config.json",
     "[FortranFreeForm]": {

@@ -376,7 +376,7 @@ contains
       end if
 
       net = initialize_net(unit, weighted=weighted)
-      call net%hashmap%clear()
+      ! call net%hashmap%clear()
       call net%print_stats()
       close(unit=unit)
    end function load_network
@@ -635,6 +635,11 @@ contains
          start_node_id, start_node_degree, net_name, &
          should_write_stats, should_write_events, output_dir)
 
+
+      if (should_write_events) then
+         write(events_unit, "(E20.10, I10, A2)") 0., start_node_id, 'I'
+      end if
+
       ! Ejecutar simulación
       call run_simulation_loop(sim, initialized_net, stats_unit, events_unit, &
          infection_rate, recovery_rate, seed, limit_time, &
@@ -675,7 +680,7 @@ contains
       end if
       !$omp end critical(file_write)
 
-      write(*, '(A,F10.5,A,I5,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=start'
+      write(*, '(A,F10.5,A,I10,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=start'
    end subroutine open_output_files
 
    subroutine run_simulation_loop(sim, net, stats_unit, events_unit, &
@@ -713,14 +718,15 @@ contains
 
          ! Verificar condiciones de terminación
          if (sim_event%action == 'E') then
-            write(*, '(A,F10.5,A,I5,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=dead'
+            write(*, '(A,F10.5,A,I10,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=dead'
             exit
          end if
 
          if (sim%time > limit_time) then
-            write(*, '(A,F10.5,A,I5,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=max'
+            write(*, '(A,F10.5,A,I10,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=max'
             exit
          end if
+         ! call sim%verify_consistency()
       end do
    end subroutine run_simulation_loop
 

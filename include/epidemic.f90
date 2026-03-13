@@ -1,6 +1,6 @@
 module epidemic
    use net_loader
-   use reversed_skiplist
+   ! use reversed_skiplist
    use mt19937_par
    use iso_fortran_env, only: int8, int32, real64
    implicit none
@@ -64,8 +64,8 @@ module epidemic
 
 
       type(mt19937_state) :: rnd
-      type(skiplist) :: weights
-      integer(ik), allocatable :: active_links_positions(:)
+      ! type(skiplist) :: weights
+      ! integer(ik), allocatable :: active_links_positions(:)
 
    contains
       procedure, public :: act
@@ -98,9 +98,9 @@ contains
 
       if (net%weighted) then
          allocate(retval%active_links_weights(2*net%stats%links_count))
-         allocate(retval%active_links_positions(2*net%stats%links_count))
          retval%active_links_weights(:) = 0.
-         retval%weights = init_skiplist(6, seed, 0.75_dp, 140)
+         ! allocate(retval%active_links_positions(2*net%stats%links_count))
+         ! retval%weights = init_skiplist(6, seed, 0.75_dp, 140)
       end if
 
       call retval%rnd%init_genrand(seed)
@@ -117,8 +117,9 @@ contains
       class(epidemic_simulation), intent(inout) :: this
       deallocate(this%active_links, this%node_states, this%infected_nodes, this%neighbours_active_links_index)
       if (this%net%weighted) then
-         call this%weights%clear()
-         deallocate(this%active_links_weights, this%active_links_positions)
+         ! call this%weights%clear()
+         ! deallocate(this%active_links_positions)
+         deallocate(this%active_links_weights)
       end if
    end subroutine clear
 
@@ -183,25 +184,25 @@ contains
    ! returns: the selected node index
    integer(ik) function infect(this) result(chosen_node)
       class(epidemic_simulation), intent(inout) :: this
-      type(skiplist_entry), pointer :: current_node
+      ! type(skiplist_entry), pointer :: current_node
       real(dp) :: random_numb
       integer(ik) :: chosen_link_idx, i
       if (this%net%weighted) then
          random_numb = this%rnd%grnd()*this%active_links_weights_sum
-         current_node => this%weights%head%ptr
-         do while (random_numb - current_node%total_weight > 0)
-            random_numb = random_numb - current_node%total_weight
-            current_node => current_node%next(this%weights%max_level)%ptr
-         end do
-
-         chosen_link_idx = ceiling((current_node%total_weight - random_numb)/current_node%weight, kind=ik)
-         ! do i = 1, this%active_links_count
-         !    random_numb = random_numb-this%active_links_weights(i)
-         !    if (random_numb <= 0) then
-         !       chosen_link_idx = i
-         !       exit
-         !    end if
+         ! current_node => this%weights%head%ptr
+         ! do while (random_numb - current_node%total_weight > 0)
+         !    random_numb = random_numb - current_node%total_weight
+         !    current_node => current_node%next(this%weights%max_level)%ptr
          ! end do
+
+         ! chosen_link_idx = ceiling((current_node%total_weight - random_numb)/current_node%weight, kind=ik)
+         do i = 1, this%active_links_count
+            random_numb = random_numb-this%active_links_weights(i)
+            if (random_numb <= 0) then
+               chosen_link_idx = i
+               exit
+            end if
+         end do
       else
          random_numb = this%rnd%grnd()*this%active_links_count
          chosen_link_idx = int(random_numb, kind=ik)+1
@@ -320,7 +321,6 @@ contains
          else if (this%node_states(neighbor) == SUSCEPTIBLE) then ! if neighbor is susceptible
             ! add to infection list
             if (this%net%weighted) then
-               this%active_links_weights_sum = this%active_links_weights_sum + this%net%weights(i)
                neighbor_link_idx = this%add_active_link(node_to_infect_idx, neighbor, this%net%weights(i))
             else
                neighbor_link_idx = this%add_active_link(node_to_infect_idx, neighbor)
@@ -386,7 +386,6 @@ contains
                   if (this%net%neighbours(j) == recovered_node) then
                      ! add active link and exit loop
                      if (this%net%weighted) then
-                        this%active_links_weights_sum = this%active_links_weights_sum + this%net%weights(j)
                         link_idx = this%add_active_link(neighbor, recovered_node, this%net%weights(j))
                      else
                         link_idx = this%add_active_link(neighbor, recovered_node)
@@ -396,7 +395,7 @@ contains
                   end if
                end do
             end if
-         end do
+         end do 
       end if
 
    end subroutine recover_node
@@ -431,10 +430,12 @@ contains
       this%active_links(this%active_links_count, 1) = origin_node
       this%active_links(this%active_links_count, 2) = target_node
       if (this%net%weighted .and. present(weight)) then
+         this%active_links_weights_sum = this%active_links_weights_sum + weight
          this%active_links_weights(this%active_links_count) = weight
-         call this%weights%add(weight, this%active_links_count, index_position)
-         ! call this%weights%debug_print()
-         this%active_links_positions(this%active_links_count) = index_position
+
+         ! call this%weights%add(weight, this%active_links_count, index_position)
+         ! ! call this%weights%debug_print()
+         ! this%active_links_positions(this%active_links_count) = index_position
       end if
       retval = this%active_links_count
    end function add_active_link
@@ -447,16 +448,16 @@ contains
       logical :: node_deletion
 
 
-      if (this%net%weighted) then
-         weight_to_remove = this%active_links_weights(idx)
-         index_position_to_remove = this%active_links_positions(idx)
-         call this%weights%remove_entry(weight_to_remove, index_position_to_remove, updated_index, node_deletion)
-         ! call this%weights%debug_print()
+      ! if (this%net%weighted) then
+      !    weight_to_remove = this%active_links_weights(idx)
+      !    index_position_to_remove = this%active_links_positions(idx)
+      !    call this%weights%remove_entry(weight_to_remove, index_position_to_remove, updated_index, node_deletion)
+      !    ! call this%weights%debug_print()
 
-         if (.not. node_deletion) then
-            this%active_links_positions(updated_index) = index_position_to_remove
-         end if
-      end if
+      !    if (.not. node_deletion) then
+      !       this%active_links_positions(updated_index) = index_position_to_remove
+      !    end if
+      ! end if
 
       if (idx /= this%active_links_count) then
          call update_active_links_ptrs(this, idx, this%active_links_count)
@@ -466,12 +467,12 @@ contains
       if (this%net%weighted) then
          this%active_links_weights_sum = this%active_links_weights_sum - this%active_links_weights(idx)
          this%active_links_weights(idx) = this%active_links_weights(this%active_links_count)
-         this%active_links_positions(idx) = this%active_links_positions(this%active_links_count)
+         ! this%active_links_positions(idx) = this%active_links_positions(this%active_links_count)
          this%active_links_weights(this%active_links_count) = 0.
-         this%active_links_positions(this%active_links_count) = 0.
-         if (idx /= this%active_links_count) then
-            call this%weights%update_index(this%active_links_weights(idx), this%active_links_positions(idx), idx)
-         end if
+         ! this%active_links_positions(this%active_links_count) = 0.
+         ! if (idx /= this%active_links_count) then
+         !    call this%weights%update_index(this%active_links_weights(idx), this%active_links_positions(idx), idx)
+         ! end if
       end if
       this%active_links_count = this%active_links_count - 1
    end subroutine remove_active_link
@@ -482,6 +483,7 @@ contains
       integer(ik) :: i, j, origin, target, ptr_idx, neighbour_idx
       integer(ik) :: count_infected_in_states
       logical :: found
+      real(dp) :: computed_weights_sum
 
       ! ============================================
       ! 1. Verificar coherencia de infected_nodes
@@ -671,22 +673,57 @@ contains
       end do
 
       ! ============================================
-      ! 5. Verificar coherencia de los rates
+      ! 5. Verificar coherencia de los rates (ADAPTADO PARA PESOS)
       ! ============================================
 
       call this%calculate_actual_rates()
 
-      if (this%actual_rates%actual_infection_rate /= &
-         this%active_links_count * this%infection_rate) then
-         write(*, *) 'ERROR: actual_infection_rate inconsistent!'
-         write(*, *) '  actual_infection_rate:', this%actual_rates%actual_infection_rate
-         write(*, *) '  active_links_count * infection_rate:', &
-            this%active_links_count * this%infection_rate
-         stop
+      if (this%net%weighted) then
+         ! Para redes con pesos, verificar la suma de pesos
+         if (abs(this%actual_rates%actual_infection_rate - &
+            this%active_links_weights_sum * this%infection_rate) > 1.0e-12_dp) then
+            write(*, *) 'ERROR: actual_infection_rate inconsistent for weighted network!'
+            write(*, *) '  actual_infection_rate:', this%actual_rates%actual_infection_rate
+            write(*, *) '  active_links_weights_sum * infection_rate:', &
+               this%active_links_weights_sum * this%infection_rate
+            write(*, *) '  active_links_weights_sum:', this%active_links_weights_sum
+            write(*, *) '  infection_rate:', this%infection_rate
+            stop
+         end if
+
+         ! Verificar que la suma de pesos es correcta
+         computed_weights_sum = sum(this%active_links_weights(1:this%active_links_count))
+         if (abs(computed_weights_sum - this%active_links_weights_sum) > 1.0e-12_dp) then
+            write(*, *) 'ERROR: active_links_weights_sum inconsistent!'
+            write(*, *) '  stored sum:', this%active_links_weights_sum
+            write(*, *) '  computed sum:', computed_weights_sum
+            stop
+         end if
+
+         ! Verificar que no hay pesos negativos o cero (si no deberían haberlos)
+         do i = 1, this%active_links_count
+            if (this%active_links_weights(i) <= 0.0_dp) then
+               write(*, *) 'ERROR: Active link with non-positive weight!'
+               write(*, *) '  Link index:', i
+               write(*, *) '  Weight:', this%active_links_weights(i)
+               stop
+            end if
+         end do
+      else
+         ! Para redes sin pesos, verificación original
+         if (abs(this%actual_rates%actual_infection_rate - &
+            this%active_links_count * this%infection_rate) > 1.0e-12_dp) then
+            write(*, *) 'ERROR: actual_infection_rate inconsistent!'
+            write(*, *) '  actual_infection_rate:', this%actual_rates%actual_infection_rate
+            write(*, *) '  active_links_count * infection_rate:', &
+               this%active_links_count * this%infection_rate
+            stop
+         end if
       end if
 
-      if (this%actual_rates%actual_recovery_rate /= &
-         this%infected_nodes_count * this%recovery_rate) then
+      ! Verificación de recovery rate (común para ambos casos)
+      if (abs(this%actual_rates%actual_recovery_rate - &
+         this%infected_nodes_count * this%recovery_rate) > 1.0e-12_dp) then
          write(*, *) 'ERROR: actual_recovery_rate inconsistent!'
          write(*, *) '  actual_recovery_rate:', this%actual_rates%actual_recovery_rate
          write(*, *) '  infected_nodes_count * recovery_rate:', &
@@ -695,7 +732,7 @@ contains
       end if
 
       ! ============================================
-      ! 6. Verificar que no hay enlaces "fantasma"
+      ! 6. Verificar que no hay enlaces "fantasma" (ADAPTADO PARA PESOS)
       ! ============================================
 
       ! Para cada nodo infectado, verificar que tiene los enlaces activos correctos
@@ -717,6 +754,18 @@ contains
                   write(*, *) '  Pointer value:', ptr_idx
                   stop
                end if
+
+               ! Verificar que el peso coincide (si es red con pesos)
+               if (this%net%weighted) then
+                  if (abs(this%active_links_weights(ptr_idx) - this%net%weights(j)) > 1.0e-12_dp) then
+                     write(*, *) 'ERROR: Weight mismatch in active link!'
+                     write(*, *) '  Link index:', ptr_idx
+                     write(*, *) '  Stored weight:', this%active_links_weights(ptr_idx)
+                     write(*, *) '  Network weight:', this%net%weights(j)
+                     stop
+                  end if
+               end if
+
             elseif (this%node_states(neighbour_idx) == INFECTED) then
                ! NO debería haber enlace activo
                ptr_idx = this%neighbours_active_links_index(j)
@@ -745,15 +794,43 @@ contains
       end do
 
       ! ============================================
-      ! 7. Estadísticas de debugging
+      ! 7. Verificaciones adicionales para redes con pesos
+      ! ============================================
+
+      if (this%net%weighted) then
+         ! Verificar que active_links_weights está asignado
+         if (.not. allocated(this%active_links_weights)) then
+            write(*, *) 'ERROR: active_links_weights not allocated for weighted network!'
+            stop
+         end if
+
+         ! Verificar que los pesos de enlaces inactivos están a cero
+         do i = this%active_links_count + 1, size(this%active_links_weights)
+            if (this%active_links_weights(i) /= 0.0_dp) then
+               write(*, *) 'ERROR: Inactive link has non-zero weight!'
+               write(*, *) '  Position:', i
+               write(*, *) '  Weight:', this%active_links_weights(i)
+               stop
+            end if
+         end do
+      end if
+
+      ! ============================================
+      ! 8. Estadísticas de debugging (ADAPTADO)
       ! ============================================
 
       write(*, *) '--- Consistency Check Passed ---'
       write(*, *) '  Time:', this%time
       write(*, *) '  Infected nodes:', this%infected_nodes_count
       write(*, *) '  Active links:', this%active_links_count
+      if (this%net%weighted) then
+         write(*, *) '  Active links weights sum:', this%active_links_weights_sum
+      end if
       write(*, *) '  Infection rate:', this%actual_rates%actual_infection_rate
       write(*, *) '  Recovery rate:', this%actual_rates%actual_recovery_rate
+      if (this%model_type == SIR_MODEL) then
+         write(*, *) '  Recovered nodes:', this%recovered_nodes_count
+      end if
 
    end subroutine verify_consistency
 

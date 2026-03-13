@@ -29,6 +29,8 @@
             "args": [
                 "-i",
                 "0.5",
+                "-s",
+                "7836580",
                 "-r",
                 "1.0",
                 "-m",
@@ -39,7 +41,8 @@
                 "-ev",
                 "-sn",
                 "2652",
-                "./nets/inf-openflights_GC.edge"
+                "-w",
+                "./nets/inf-openflights_GC.edge_weight",
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

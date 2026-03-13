@@ -11,19 +11,18 @@ program main
    type(epidemic_net) :: net
    integer :: i_lambdas
    character(:), allocatable :: name
-   
-   ! open(unit=11, file='./nets/out.moreno_beach_beach', action='read')
-   open(unit=11, file='./nets/musae_git_edges.csv', action='read')
 
-   net = initialize_net(11, weighted=.false.)
-   call net%hashmap%clear()
+   ! open(unit=11, file='./nets/out.moreno_beach_beach', action='read')
+   open(unit=11, file='./nets/inf-openflights_GC.edge_weight', action='read')
+
+   net = initialize_net(11, weighted=.true.)
    call net%print_stats()
    close(unit=11)
 
 
    ! call sis_prevalence(net)
    name = 'musae_git_edges'
-   call execute_simulation(net, 2._dp, 1._dp, 42072, 500._dp, SIR_MODEL, stats_unit=21, events_unit=22, net_name=name)
+   call execute_simulation(net, 0.005_dp, 1._dp, 7836580, 50._dp, SIR_MODEL, stats_unit=21, events_unit=22, net_name=name)
 
    ! !$omp parallel do private(i_lambdas) schedule(dynamic)
    ! do i_lambdas = 100, 1, -1
@@ -151,12 +150,8 @@ contains
       sim = initialize_simulation(initialized_net, seed, model_type)
 
       max_degree = 0
-      do i_sim = 1, initialized_net%stats%nodes_count
-         if (initialized_net%degree(i_sim) > max_degree) then
-            max_degree = initialized_net%degree(i_sim)
-            max_degree_node_index = i_sim
-         end if
-      end do
+      call initialized_net%hashmap%get(2652, max_degree_node_index)
+
 
       should_write_stats = present(stats_unit)
       should_write_events = present(events_unit)
@@ -225,7 +220,8 @@ contains
          write(events_unit, *) '# time, node_id, event'
       end if
       !$omp end critical(file_write)
-      write(*, '(A,F10.5,A,I5,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=start'
+      write(*, '(A,F10.5,A,I10,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=start'
+      !$omp end critical(file_write)
       do
          sim_event = sim%act()
 
@@ -247,16 +243,16 @@ contains
          end if
 
          if (sim_event%action == 'E') then
-            write(*, '(A,F10.5,A,I5,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=dead'
+            write(*, '(A,F10.5,A,I10,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=dead'
             exit
          end if
          ! write(*, '(A,F10.5,A,I5,A,F10.5)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=',sim%time
 
          if (sim%time > limit_time) then
-            write(*, '(A,F10.5,A,I5,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=max'
+            write(*, '(A,F10.5,A,I10,A)') 'I/R=', infection_rate/recovery_rate, '-S=', seed, '-t=max'
             exit
          end if
-
+         ! call sim%verify_consistency()
       end do
       !$omp critical(file_write)
       if (should_write_stats) close(unit=stats_unit)

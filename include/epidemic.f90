@@ -198,7 +198,7 @@ contains
          ! chosen_link_idx = ceiling((current_node%total_weight - random_numb)/current_node%weight, kind=ik)
          do i = 1, this%active_links_count
             random_numb = random_numb-this%active_links_weights(i)
-            if (random_numb <= 0) then
+            if (random_numb <= 0.) then
                chosen_link_idx = i
                exit
             end if
@@ -459,9 +459,9 @@ contains
       !    end if
       ! end if
 
-      if (idx /= this%active_links_count) then
-         call update_active_links_ptrs(this, idx, this%active_links_count)
-      end if
+      ! if (idx /= this%active_links_count) then
+      call update_active_links_ptrs(this, idx, this%active_links_count)
+      ! end if
 
       this%active_links(idx, :) = this%active_links(this%active_links_count, :)
       if (this%net%weighted) then

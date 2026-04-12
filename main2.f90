@@ -11,7 +11,8 @@ program main
    type :: simulation_config
       character(:), allocatable :: net_filename
       character(:), allocatable :: net_name
-      character(:), allocatable :: output_dir  ! <-- Nueva variable
+      character(:), allocatable :: output_dir
+      character(:), allocatable :: batch_file
       real(dp) :: infection_rate
       real(dp) :: recovery_rate
       real(dp) :: limit_time
@@ -21,8 +22,8 @@ program main
       logical :: weighted
       logical :: save_stats
       logical :: save_events
-      logical :: has_start_node
       integer :: stats_unit
+      logical :: has_start_node
       integer :: events_unit
    end type simulation_config
 
@@ -40,7 +41,11 @@ program main
    network = load_network(configuration%net_filename, configuration%weighted)
 
    ! Ejecutar simulación
-   call run_simulation(network, configuration)
+   if (allocated(configuration%batch_file)) then
+      call run_batch_simulations(network, configuration)
+   else
+      call run_simulation(network, configuration)
+   end if
 
 contains
 
@@ -59,11 +64,12 @@ contains
       character(len=256) :: arg
       character(len=:), allocatable :: trimmed_arg  ! <-- Añadir esta variable
       logical :: infection_rate_set, recovery_rate_set, model_set, net_file_set
+      logical :: batch_file_present
       logical :: help_requested
 
       ! Inicializar valores por defecto
       call set_default_config(config, infection_rate_set, recovery_rate_set, &
-         model_set, net_file_set)
+         model_set, net_file_set, batch_file_present)
       help_requested = .false.
 
       ! Procesar argumentos
@@ -100,6 +106,9 @@ contains
             config%save_stats = .true.
          else if (trimmed_arg == '--output-dir' .or. trimmed_arg == '-o') then  ! <-- Nueva opción
             call read_string_arg(i, n_args, 'output-dir', config%output_dir)
+         else if (trimmed_arg == '--batch-file' .or. trimmed_arg == '-b') then
+            call read_string_arg(i, n_args, 'batch-file', config%batch_file)
+            batch_file_present = .true.
          else
             call handle_network_file(arg, config%net_filename, net_file_set)
          end if
@@ -114,7 +123,7 @@ contains
 
       ! Validar argumentos obligatorios
       call validate_required_args(infection_rate_set, recovery_rate_set, &
-         model_set, net_file_set)
+         model_set, net_file_set, batch_file_present)
 
       ! Configurar seed si es necesario
       call setup_seed(config%seed)
@@ -149,6 +158,8 @@ contains
       write(*, '(A)') '  -sn, --start-node              Indica el nodo inicial para infectar'
       write(*, '(A)') '                                 (default: el nodo con degree más alto)'
       write(*, '(A)') '  -w, --weighted                 Indica que la red es ponderada'
+      write(*, '(A)') '  -b, --batch-file ARCHIVO       Archivo con lista de simulaciones a ejecutar'
+      write(*, '(A)') '                                 (cada línea: inf_rate rec_rate seed limit_time model [start_node])'
       write(*, '(A)') ''
       write(*, '(A)') 'ARCHIVOS DE SALIDA:'
       write(*, '(A)') '  -o, --output                   Carpeta de salida de archivos'
@@ -181,15 +192,16 @@ contains
    end subroutine print_help
 
    subroutine set_default_config(config, infection_rate_set, recovery_rate_set, &
-      model_set, net_file_set)
+      model_set, net_file_set, batch_file_present)
       type(simulation_config), intent(out) :: config
       logical, intent(out) :: infection_rate_set, recovery_rate_set
-      logical, intent(out) :: model_set, net_file_set
+      logical, intent(out) :: model_set, net_file_set, batch_file_present
 
       infection_rate_set = .false.
       recovery_rate_set = .false.
       model_set = .false.
       net_file_set = .false.
+      batch_file_present = .false.
 
       config%weighted = .false.
       config%save_stats = .false.
@@ -201,6 +213,7 @@ contains
       config%stats_unit = 21
       config%events_unit = 22
       config%output_dir = './output'  ! <-- Valor por defecto
+      config%batch_file = ''
    end subroutine set_default_config
 
    subroutine read_real_arg(i, n_args, arg_name, value)
@@ -302,9 +315,18 @@ contains
    end subroutine handle_network_file
 
    subroutine validate_required_args(infection_rate_set, recovery_rate_set, &
-      model_set, net_file_set)
+      model_set, net_file_set, batch_file_present)
       logical, intent(in) :: infection_rate_set, recovery_rate_set
       logical, intent(in) :: model_set, net_file_set
+      logical, intent(in) :: batch_file_present   ! <-- NUEVO argumento
+
+      if (batch_file_present) then
+         ! En modo batch solo se necesita el archivo de red
+         if (.not. net_file_set) then
+            call argument_error('Debe especificar el archivo de red')
+         end if
+         return
+      end if
 
       if (.not. infection_rate_set) then
          call argument_error('Debe especificar --infection-rate o -i')
@@ -461,6 +483,139 @@ contains
          end if
       end if
    end subroutine run_simulation
+
+   subroutine run_batch_simulations(net, config)
+      use omp_lib          ! <-- Añadir este use si no lo tienes global
+      type(epidemic_net), intent(inout) :: net
+      type(simulation_config), intent(in) :: config
+      integer :: unit, ios, line_num, num_tasks, i
+      character(len=256) :: line
+      logical :: save_stats, save_events
+      integer, parameter :: MAX_TASKS = 100000   ! Ajusta según necesidad
+      real(dp), allocatable :: task_inf_rate(:), task_rec_rate(:), task_limit_time(:)
+      integer(ik), allocatable :: task_seed(:), task_start_node(:)
+      integer(bk), allocatable :: task_model_type(:)
+      integer :: stats_u_base, events_u_base
+
+      save_stats = config%save_stats
+      save_events = config%save_events
+      stats_u_base = 1000
+      events_u_base = 2000
+
+      ! Primero contar cuántas tareas hay
+      open(newunit=unit, file=config%batch_file, status='old', action='read', iostat=ios)
+      if (ios /= 0) then
+         write(*,*) 'Error abriendo archivo batch: ', config%batch_file
+         stop 1
+      end if
+
+      num_tasks = 0
+      do
+         read(unit, '(A)', iostat=ios) line
+         if (ios /= 0) exit
+         line = adjustl(line)
+         if (line(1:1) == '#' .or. len_trim(line) == 0) cycle
+         num_tasks = num_tasks + 1
+      end do
+      rewind(unit)
+
+      if (num_tasks == 0) then
+         write(*,*) 'Archivo batch vacío o sin tareas válidas.'
+         close(unit)
+         return
+      end if
+
+      ! Reservar memoria para las tareas
+      allocate(task_inf_rate(num_tasks), task_rec_rate(num_tasks), &
+         task_limit_time(num_tasks), task_seed(num_tasks), &
+         task_model_type(num_tasks), task_start_node(num_tasks))
+
+      ! Leer y almacenar tareas
+      line_num = 0
+      do
+         read(unit, '(A)', iostat=ios) line
+         if (ios /= 0) exit
+         line = adjustl(line)
+         if (line(1:1) == '#' .or. len_trim(line) == 0) cycle
+
+         line_num = line_num + 1
+         ! Leer valores obligatorios
+         read(line, *, iostat=ios) task_inf_rate(line_num), task_rec_rate(line_num), &
+            task_seed(line_num), task_limit_time(line_num), &
+            task_model_type(line_num)
+         if (ios /= 0) then
+            write(*,*) 'Error en línea ', line_num, ': formato incorrecto.'
+            task_start_node(line_num) = -1
+            cycle
+         end if
+
+         ! Intentar leer start_node opcional
+         task_start_node(line_num) = -1
+         read(line, *, iostat=ios) task_inf_rate(line_num), task_rec_rate(line_num), &
+            task_seed(line_num), task_limit_time(line_num), &
+            task_model_type(line_num), task_start_node(line_num)
+         if (ios /= 0) task_start_node(line_num) = -1   ! no proporcionado
+      end do
+      close(unit)
+
+      write(*,*) 'Ejecutando ', num_tasks, ' simulaciones en paralelo con OpenMP.'
+
+      ! Bucle paralelo sobre las tareas
+      !$omp parallel do private(i) schedule(dynamic)
+      do i = 1, num_tasks
+         if (task_start_node(i) > 0) then
+            if (save_stats .and. save_events) then
+               call execute_simulation(net, task_inf_rate(i), task_rec_rate(i), &
+                  task_seed(i), task_limit_time(i), task_model_type(i), &
+                  config%output_dir, start_node=task_start_node(i), &
+                  stats_unit=stats_u_base+i, events_unit=events_u_base+i, &
+                  net_name=config%net_name)
+            else if (save_stats) then
+               call execute_simulation(net, task_inf_rate(i), task_rec_rate(i), &
+                  task_seed(i), task_limit_time(i), task_model_type(i), &
+                  config%output_dir, start_node=task_start_node(i), &
+                  stats_unit=stats_u_base+i, net_name=config%net_name)
+            else if (save_events) then
+               call execute_simulation(net, task_inf_rate(i), task_rec_rate(i), &
+                  task_seed(i), task_limit_time(i), task_model_type(i), &
+                  config%output_dir, start_node=task_start_node(i), &
+                  events_unit=events_u_base+i, net_name=config%net_name)
+            else
+               call execute_simulation(net, task_inf_rate(i), task_rec_rate(i), &
+                  task_seed(i), task_limit_time(i), task_model_type(i), &
+                  config%output_dir, start_node=task_start_node(i), &
+                  net_name=config%net_name)
+            end if
+         else
+            if (save_stats .and. save_events) then
+               call execute_simulation(net, task_inf_rate(i), task_rec_rate(i), &
+                  task_seed(i), task_limit_time(i), task_model_type(i), &
+                  config%output_dir, stats_unit=stats_u_base+i, &
+                  events_unit=events_u_base+i, net_name=config%net_name)
+            else if (save_stats) then
+               call execute_simulation(net, task_inf_rate(i), task_rec_rate(i), &
+                  task_seed(i), task_limit_time(i), task_model_type(i), &
+                  config%output_dir, stats_unit=stats_u_base+i, &
+                  net_name=config%net_name)
+            else if (save_events) then
+               call execute_simulation(net, task_inf_rate(i), task_rec_rate(i), &
+                  task_seed(i), task_limit_time(i), task_model_type(i), &
+                  config%output_dir, events_unit=events_u_base+i, &
+                  net_name=config%net_name)
+            else
+               call execute_simulation(net, task_inf_rate(i), task_rec_rate(i), &
+                  task_seed(i), task_limit_time(i), task_model_type(i), &
+                  config%output_dir, net_name=config%net_name)
+            end if
+         end if
+      end do
+      !$omp end parallel do
+
+      deallocate(task_inf_rate, task_rec_rate, task_limit_time, task_seed, &
+         task_model_type, task_start_node)
+
+      write(*,*) 'Batch completado: ', num_tasks, ' simulaciones ejecutadas.'
+   end subroutine run_batch_simulations
 
    !===============================================================================
    ! Función para encontrar nodo de grado máximo

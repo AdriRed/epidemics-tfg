@@ -13,7 +13,7 @@ program main
    character(:), allocatable :: name
 
    ! open(unit=11, file='./nets/out.moreno_beach_beach', action='read')
-   open(unit=11, file='./nets/inf-openflights_GC.edge_weight', action='read')
+   open(unit=11, file='./nets/n10000.edge_weight_1', action='read')
 
    net = initialize_net(11, weighted=.true.)
    call net%print_stats()
@@ -21,8 +21,8 @@ program main
 
 
    ! call sis_prevalence(net)
-   name = 'musae_git_edges'
-   call execute_simulation(net, 0.005_dp, 1._dp, 7836580, 50._dp, SIR_MODEL, stats_unit=21, events_unit=22, net_name=name)
+   name = 'n10000.edge_weight_1'
+   call execute_simulation(net, 2._dp, 1._dp, 42072, 50._dp, SIR_MODEL, stats_unit=21, events_unit=22, net_name=name)
 
    ! !$omp parallel do private(i_lambdas) schedule(dynamic)
    ! do i_lambdas = 100, 1, -1

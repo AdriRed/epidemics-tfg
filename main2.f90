@@ -24,6 +24,7 @@ program main
       logical :: save_events
       integer :: stats_unit
       logical :: has_start_node
+      logical :: has_batch_file
       integer :: events_unit
    end type simulation_config
 
@@ -41,7 +42,7 @@ program main
    network = load_network(configuration%net_filename, configuration%weighted)
 
    ! Ejecutar simulación
-   if (allocated(configuration%batch_file)) then
+   if (configuration%has_batch_file) then
       call run_batch_simulations(network, configuration)
    else
       call run_simulation(network, configuration)
@@ -64,12 +65,11 @@ contains
       character(len=256) :: arg
       character(len=:), allocatable :: trimmed_arg  ! <-- Añadir esta variable
       logical :: infection_rate_set, recovery_rate_set, model_set, net_file_set
-      logical :: batch_file_present
       logical :: help_requested
 
       ! Inicializar valores por defecto
       call set_default_config(config, infection_rate_set, recovery_rate_set, &
-         model_set, net_file_set, batch_file_present)
+         model_set, net_file_set)
       help_requested = .false.
 
       ! Procesar argumentos
@@ -108,7 +108,7 @@ contains
             call read_string_arg(i, n_args, 'output-dir', config%output_dir)
          else if (trimmed_arg == '--batch-file' .or. trimmed_arg == '-b') then
             call read_string_arg(i, n_args, 'batch-file', config%batch_file)
-            batch_file_present = .true.
+            config%has_batch_file = .true.
          else
             call handle_network_file(arg, config%net_filename, net_file_set)
          end if
@@ -123,7 +123,7 @@ contains
 
       ! Validar argumentos obligatorios
       call validate_required_args(infection_rate_set, recovery_rate_set, &
-         model_set, net_file_set, batch_file_present)
+         model_set, net_file_set, config%has_batch_file)
 
       ! Configurar seed si es necesario
       call setup_seed(config%seed)
@@ -192,16 +192,15 @@ contains
    end subroutine print_help
 
    subroutine set_default_config(config, infection_rate_set, recovery_rate_set, &
-      model_set, net_file_set, batch_file_present)
+      model_set, net_file_set)
       type(simulation_config), intent(out) :: config
       logical, intent(out) :: infection_rate_set, recovery_rate_set
-      logical, intent(out) :: model_set, net_file_set, batch_file_present
+      logical, intent(out) :: model_set, net_file_set
 
       infection_rate_set = .false.
       recovery_rate_set = .false.
       model_set = .false.
       net_file_set = .false.
-      batch_file_present = .false.
 
       config%weighted = .false.
       config%save_stats = .false.
@@ -214,6 +213,7 @@ contains
       config%events_unit = 22
       config%output_dir = './output'  ! <-- Valor por defecto
       config%batch_file = ''
+      config%has_batch_file = .false.
    end subroutine set_default_config
 
    subroutine read_real_arg(i, n_args, arg_name, value)

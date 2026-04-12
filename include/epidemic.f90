@@ -128,7 +128,7 @@ contains
       real(dp) :: numb
       call this%calculate_actual_rates()
 
-      if (this%actual_rates%total_rate == 0.) then
+      if (this%actual_rates%total_rate == 0. .or. this%infected_nodes_count == 0) then
          retval%selected_node = -1
          retval%action = 'E'
          return

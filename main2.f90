@@ -850,7 +850,8 @@ contains
 
       type(epidemic_step_event) :: sim_event
       type(epidemic_simulation_stats) :: sim_stats
-      integer(ik) :: node_id
+      integer(ik) :: node_id, step_n
+      step_n = 0
 
       do
          sim_event = sim%act()
@@ -865,10 +866,12 @@ contains
          end if
 
          if (should_write_events) then
-            call net%rev_hashmap%get(sim_event%selected_node, node_id)
-            !$omp critical(file_write)
-            write(events_unit, "(E20.10, I10, A2)") sim%time, node_id, sim_event%action
-            !$omp end critical(file_write)
+            if (mod(step_n, 100) == 0) then
+               call net%rev_hashmap%get(sim_event%selected_node, node_id)
+               !$omp critical(file_write)
+               write(events_unit, "(E20.10, I10, A2)") sim%time, node_id, sim_event%action
+               !$omp end critical(file_write)
+            end if
          end if
 
          ! Verificar condiciones de terminación
@@ -882,6 +885,7 @@ contains
             exit
          end if
          ! call sim%verify_consistency()
+         step_n = step_n+1
       end do
    end subroutine run_simulation_loop
 

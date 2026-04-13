@@ -121,7 +121,7 @@ contains
             exit
          else
 
-            idx = index(line, "%", kind=ik)
+            idx = max(index(line, "%", kind=ik), index(line, "#", kind=ik))
             if (idx > 0) cycle ! detected comment
             read(line, *, iostat=iostat) node_a, node_b
             if (node_a == node_b) cycle ! skip autolinks
@@ -155,7 +155,7 @@ contains
          if (iostat < 0) then ! finished file
             exit
          else
-            idx = index(line, "%", kind=ik)
+            idx = max(index(line, "%", kind=ik), index(line, "#", kind=ik))
             if (idx > 0) cycle ! detected comment
             retval = retval + 1
          end if
@@ -184,7 +184,7 @@ contains
             exit
          else
 
-            idx = index(line, "%", kind=ik)
+            idx = max(index(line, "%", kind=ik), index(line, "#", kind=ik))
             if (idx > 0) cycle ! detected comment
 
             read(line, *, iostat=iostat) node_a, node_b
@@ -226,7 +226,7 @@ contains
          if (iostat < 0) exit
 
 
-         idx = index(line, "%", kind=ik)
+            idx = max(index(line, "%", kind=ik), index(line, "#", kind=ik))
          if (idx > 0) cycle ! detected comment
 
          if (weighted) then

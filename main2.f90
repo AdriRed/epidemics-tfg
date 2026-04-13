@@ -851,27 +851,27 @@ contains
       type(epidemic_step_event) :: sim_event
       type(epidemic_simulation_stats) :: sim_stats
       integer(ik) :: node_id, step_n
-      step_n = 0
+      step_n = 1
 
       do
          sim_event = sim%act()
 
          if (should_write_stats) then
-            sim_stats = sim%get_stats()
-            !$omp critical(file_write)
-            write(stats_unit, "(E20.10, E20.10, E20.10, E20.10, E20.10)") sim%time, &
-               sim_stats%infected_density, sim_stats%recovered_density, &
-               sim_stats%rates%actual_infection_rate, sim_stats%rates%actual_recovery_rate
-            !$omp end critical(file_write)
+            if (mod(step_n, 1000) == 0) then
+               sim_stats = sim%get_stats()
+               !$omp critical(file_write)
+               write(stats_unit, "(E20.10, E20.10, E20.10, E20.10, E20.10)") sim%time, &
+                  sim_stats%infected_density, sim_stats%recovered_density, &
+                  sim_stats%rates%actual_infection_rate, sim_stats%rates%actual_recovery_rate
+               !$omp end critical(file_write)
+            end if
          end if
 
          if (should_write_events) then
-            if (mod(step_n, 100) == 0) then
-               call net%rev_hashmap%get(sim_event%selected_node, node_id)
-               !$omp critical(file_write)
-               write(events_unit, "(E20.10, I10, A2)") sim%time, node_id, sim_event%action
-               !$omp end critical(file_write)
-            end if
+            call net%rev_hashmap%get(sim_event%selected_node, node_id)
+            !$omp critical(file_write)
+            write(events_unit, "(E20.10, I10, A2)") sim%time, node_id, sim_event%action
+            !$omp end critical(file_write)
          end if
 
          ! Verificar condiciones de terminación
@@ -887,6 +887,18 @@ contains
          ! call sim%verify_consistency()
          step_n = step_n+1
       end do
+
+      if (should_write_stats) then
+         if (mod(step_n, 1000) /= 0) then
+            sim_stats = sim%get_stats()
+            !$omp critical(file_write)
+            write(stats_unit, "(E20.10, E20.10, E20.10, E20.10, E20.10)") sim%time, &
+               sim_stats%infected_density, sim_stats%recovered_density, &
+               sim_stats%rates%actual_infection_rate, sim_stats%rates%actual_recovery_rate
+            !$omp end critical(file_write)
+         end if
+      end if
+
    end subroutine run_simulation_loop
 
    subroutine close_output_files(stats_unit, events_unit, should_write_stats, should_write_events)

@@ -22,7 +22,7 @@ program main
       logical :: weighted
       logical :: save_stats
       logical :: save_events
-      integer :: stats_unit
+      integer :: stats_unit, stats_steps
       logical :: has_start_node
       logical :: has_batch_file
       integer :: events_unit
@@ -109,6 +109,8 @@ contains
          else if (trimmed_arg == '--batch-file' .or. trimmed_arg == '-b') then
             call read_string_arg(i, n_args, 'batch-file', config%batch_file)
             config%has_batch_file = .true.
+         else if (trimmed_arg == '--stats-steps' .or. trimmed_arg == '-ss') then
+            call read_integer_arg(i, n_args, 'stats-steps', config%stats_steps)
          else
             call handle_network_file(arg, config%net_filename, net_file_set)
          end if
@@ -123,7 +125,7 @@ contains
 
       ! Validar argumentos obligatorios
       call validate_required_args(infection_rate_set, recovery_rate_set, &
-         model_set, net_file_set, config%has_batch_file)
+         model_set, net_file_set, config%has_batch_file, config%stats_steps)
 
       ! Configurar seed si es necesario
       call setup_seed(config%seed)
@@ -163,9 +165,10 @@ contains
       write(*, '(A)') ''
       write(*, '(A)') 'ARCHIVOS DE SALIDA:'
       write(*, '(A)') '  -o, --output                   Carpeta de salida de archivos'
-      write(*, '(A)') '  -st, --stats                   (./output)'
-      write(*, '(A)') '  -st, --stats                    Guardar archivo de estadísticas'
+      write(*, '(A)') '                                 (./output)'
+      write(*, '(A)') '  -st, --stats                   Guardar archivo de estadísticas'
       write(*, '(A)') '                                 (./output/stats-NOMBRE_red-I...dat)'
+      write(*, '(A)') '  -ss, --stats-steps             Estadísticas cada x pasos'
       write(*, '(A)') '  -ev, --events                   Guardar archivo de eventos'
       write(*, '(A)') '                                 (./output/events-NOMBRE_red-I...dat)'
       write(*, '(A)') ''
@@ -208,6 +211,7 @@ contains
       config%has_start_node = .false.
       config%limit_time = 50.0_dp
       config%seed = 0
+      config%stats_steps = 100
       config%start_node = -1
       config%stats_unit = 21
       config%events_unit = 22
@@ -315,10 +319,11 @@ contains
    end subroutine handle_network_file
 
    subroutine validate_required_args(infection_rate_set, recovery_rate_set, &
-      model_set, net_file_set, batch_file_present)
+      model_set, net_file_set, batch_file_present, stats_steps)
       logical, intent(in) :: infection_rate_set, recovery_rate_set
       logical, intent(in) :: model_set, net_file_set
       logical, intent(in) :: batch_file_present   ! <-- NUEVO argumento
+      integer, intent(in) :: stats_steps
 
       if (batch_file_present) then
          ! En modo batch solo se necesita el archivo de red
@@ -326,6 +331,10 @@ contains
             call argument_error('Debe especificar el archivo de red')
          end if
          return
+      end if
+
+      if (stats_steps <= 0) then
+         call argument_error('--stats-steps o -ss debe ser mayor que 1')
       end if
 
       if (.not. infection_rate_set) then
@@ -439,12 +448,12 @@ contains
             call execute_simulation(net, config%infection_rate, config%recovery_rate, &
                int(config%seed, ik), config%limit_time, &
                config%model_type, config%output_dir, start_node=config%start_node, stats_unit=config%stats_unit, &
-               events_unit=config%events_unit, net_name=config%net_name)
+               events_unit=config%events_unit, net_name=config%net_name, stats_steps=config%stats_steps)
          else
             call execute_simulation(net, config%infection_rate, config%recovery_rate, &
                int(config%seed, ik), config%limit_time, &
                config%model_type, config%output_dir, stats_unit=config%stats_unit, &
-               events_unit=config%events_unit, net_name=config%net_name)
+               events_unit=config%events_unit, net_name=config%net_name, stats_steps=config%stats_steps)
          end if
 
       else if (config%save_stats) then
@@ -452,34 +461,35 @@ contains
             call execute_simulation(net, config%infection_rate, config%recovery_rate, &
                int(config%seed, ik), config%limit_time, &
                config%model_type, config%output_dir, start_node=config%start_node, stats_unit=config%stats_unit, &
-               net_name=config%net_name)
+               net_name=config%net_name, stats_steps=config%stats_steps)
          else
             call execute_simulation(net, config%infection_rate, config%recovery_rate, &
                int(config%seed, ik), config%limit_time, &
                config%model_type, config%output_dir, stats_unit=config%stats_unit, &
-               net_name=config%net_name)
+               net_name=config%net_name, stats_steps=config%stats_steps)
          end if
       else if (config%save_events) then
          if (config%has_start_node) then
             call execute_simulation(net, config%infection_rate, config%recovery_rate, &
                int(config%seed, ik), config%limit_time, &
                config%model_type, config%output_dir, start_node=config%start_node, events_unit=config%events_unit, &
-               net_name=config%net_name)
+               net_name=config%net_name, stats_steps=config%stats_steps)
          else
             call execute_simulation(net, config%infection_rate, config%recovery_rate, &
                int(config%seed, ik), config%limit_time, &
                config%model_type, config%output_dir, events_unit=config%events_unit, &
-               net_name=config%net_name)
+               net_name=config%net_name, stats_steps=config%stats_steps)
          end if
       else
          if (config%has_start_node) then
             call execute_simulation(net, config%infection_rate, config%recovery_rate, &
                int(config%seed, ik), config%limit_time, &
-               config%model_type, config%output_dir, start_node=config%start_node, net_name=config%net_name)
+               config%model_type, config%output_dir, start_node=config%start_node, net_name=config%net_name, &
+               stats_steps=config%stats_steps)
          else
             call execute_simulation(net, config%infection_rate, config%recovery_rate, &
                int(config%seed, ik), config%limit_time, &
-               config%model_type, config%output_dir, net_name=config%net_name)
+               config%model_type, config%output_dir, net_name=config%net_name, stats_steps=config%stats_steps)
          end if
       end if
    end subroutine run_simulation
@@ -569,43 +579,43 @@ contains
                   task_seed(i), task_limit_time(i), task_model_type(i), &
                   config%output_dir, start_node=task_start_node(i), &
                   stats_unit=stats_u_base+i, events_unit=events_u_base+i, &
-                  net_name=config%net_name)
+                  net_name=config%net_name, stats_steps=config%stats_steps)
             else if (save_stats) then
                call execute_simulation(net, task_inf_rate(i), task_rec_rate(i), &
                   task_seed(i), task_limit_time(i), task_model_type(i), &
                   config%output_dir, start_node=task_start_node(i), &
-                  stats_unit=stats_u_base+i, net_name=config%net_name)
+                  stats_unit=stats_u_base+i, net_name=config%net_name, stats_steps=config%stats_steps)
             else if (save_events) then
                call execute_simulation(net, task_inf_rate(i), task_rec_rate(i), &
                   task_seed(i), task_limit_time(i), task_model_type(i), &
                   config%output_dir, start_node=task_start_node(i), &
-                  events_unit=events_u_base+i, net_name=config%net_name)
+                  events_unit=events_u_base+i, net_name=config%net_name, stats_steps=config%stats_steps)
             else
                call execute_simulation(net, task_inf_rate(i), task_rec_rate(i), &
                   task_seed(i), task_limit_time(i), task_model_type(i), &
                   config%output_dir, start_node=task_start_node(i), &
-                  net_name=config%net_name)
+                  net_name=config%net_name, stats_steps=config%stats_steps)
             end if
          else
             if (save_stats .and. save_events) then
                call execute_simulation(net, task_inf_rate(i), task_rec_rate(i), &
                   task_seed(i), task_limit_time(i), task_model_type(i), &
                   config%output_dir, stats_unit=stats_u_base+i, &
-                  events_unit=events_u_base+i, net_name=config%net_name)
+                  events_unit=events_u_base+i, net_name=config%net_name, stats_steps=config%stats_steps)
             else if (save_stats) then
                call execute_simulation(net, task_inf_rate(i), task_rec_rate(i), &
                   task_seed(i), task_limit_time(i), task_model_type(i), &
                   config%output_dir, stats_unit=stats_u_base+i, &
-                  net_name=config%net_name)
+                  net_name=config%net_name, stats_steps=config%stats_steps)
             else if (save_events) then
                call execute_simulation(net, task_inf_rate(i), task_rec_rate(i), &
                   task_seed(i), task_limit_time(i), task_model_type(i), &
                   config%output_dir, events_unit=events_u_base+i, &
-                  net_name=config%net_name)
+                  net_name=config%net_name, stats_steps=config%stats_steps)
             else
                call execute_simulation(net, task_inf_rate(i), task_rec_rate(i), &
                   task_seed(i), task_limit_time(i), task_model_type(i), &
-                  config%output_dir, net_name=config%net_name)
+                  config%output_dir, net_name=config%net_name, stats_steps=config%stats_steps)
             end if
          end if
       end do
@@ -741,12 +751,12 @@ contains
    !===============================================================================
 
    subroutine execute_simulation(initialized_net, infection_rate, recovery_rate, &
-      seed, limit_time, model_type, output_dir, start_node, stats_unit, events_unit, net_name)
+      seed, limit_time, model_type, output_dir, start_node, stats_unit, events_unit, net_name, stats_steps)
       implicit none
       class(epidemic_net), intent(inout) :: initialized_net
       real(dp), intent(in) :: infection_rate, recovery_rate, limit_time
       integer(ik), intent(in) :: seed
-      integer(ik), intent(in), optional :: stats_unit, events_unit, start_node
+      integer(ik), intent(in), optional :: stats_unit, events_unit, start_node, stats_steps
       integer(bk), intent(in) :: model_type
       character(:), intent(in), allocatable, optional :: net_name
 
@@ -798,7 +808,7 @@ contains
       ! Ejecutar simulación
       call run_simulation_loop(sim, initialized_net, stats_unit, events_unit, &
          infection_rate, recovery_rate, seed, limit_time, &
-         should_write_stats, should_write_events)
+         should_write_stats, stats_steps, should_write_events)
 
       ! Limpiar
       call close_output_files(stats_unit, events_unit, should_write_stats, should_write_events)
@@ -840,10 +850,10 @@ contains
 
    subroutine run_simulation_loop(sim, net, stats_unit, events_unit, &
       infection_rate, recovery_rate, seed, limit_time, &
-      should_write_stats, should_write_events)
+      should_write_stats, stats_steps, should_write_events)
       type(epidemic_simulation), intent(inout) :: sim
       type(epidemic_net), intent(inout) :: net
-      integer(ik), intent(in), optional :: stats_unit, events_unit
+      integer(ik), intent(in), optional :: stats_unit, events_unit, stats_steps
       real(dp), intent(in) :: infection_rate, recovery_rate, limit_time
       integer(ik), intent(in) :: seed
       logical, intent(in) :: should_write_stats, should_write_events
@@ -857,7 +867,7 @@ contains
          sim_event = sim%act()
 
          if (should_write_stats) then
-            if (mod(step_n, 1000) == 0) then
+            if (mod(step_n, stats_steps) == 0) then
                sim_stats = sim%get_stats()
                !$omp critical(file_write)
                write(stats_unit, "(E20.10, E20.10, E20.10, E20.10, E20.10)") sim%time, &

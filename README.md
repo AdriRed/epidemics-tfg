@@ -1,10 +1,14 @@
-# Codi de simulació de treball de recerca
+# Epidemics Engine
+
+Adrià Rojo. 2026.
+
+---
 
 Aquest codi està preparat per executar-se amb Visual Studio Code a Linux.
 
 Té com a requisits tenir el `gfortran` instal·lat.
 
-Un cop estigui tot preparat, només s'ha de compilar i executar amb la tecla F5 i s'encarrega de l'ordre de compilació.
+Un cop estigui tot preparat, només s'ha de compilar i executar amb els diversos script de `build.sh`, `build-main2.sh` o `build-parallel.sh`.
 
 ## Dependències
 

@@ -573,7 +573,7 @@ contains
       ! Bucle paralelo sobre las tareas
       !$omp parallel do private(i) schedule(dynamic)
       do i = 1, num_tasks
-         if (task_start_node(i) > 0) then
+         if (task_start_node(i) >= 0) then
             if (save_stats .and. save_events) then
                call execute_simulation(net, task_inf_rate(i), task_rec_rate(i), &
                   task_seed(i), task_limit_time(i), task_model_type(i), &
@@ -660,10 +660,10 @@ contains
       character(*), intent(in), optional :: net_name
       character(:), allocatable :: filename
 
-      character(80) :: name1, name2, name3
-
+      character(100) :: name1, name2, name3
       ! Parte 1: parámetros numéricos
-      write(name1, '(A,F10.5,A,F10.5,A,I5)') 'I=', infection_rate, '-R=', recovery_rate, '-S=', seed, '-SN=', start_node
+      write(name1, '(A,F10.5,A,F10.5,A,I5,A,I5.5)') 'I=', infection_rate, &
+         '-R=', recovery_rate, '-S=', seed, '-SN=', start_node
 
       ! Parte 2: modelo
       if (model_type == SIR_MODEL) then

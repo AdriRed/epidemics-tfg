@@ -652,18 +652,18 @@ contains
    !===============================================================================
 
    function generate_filename(net, infection_rate, recovery_rate, seed, &
-      model_type, net_name) result(filename)
+      model_type, start_node, net_name) result(filename)
       type(epidemic_net), intent(in) :: net
       real(dp), intent(in) :: infection_rate, recovery_rate
-      integer(ik), intent(in) :: seed
+      integer(ik), intent(in) :: seed, start_node
       integer(bk), intent(in) :: model_type
       character(*), intent(in), optional :: net_name
       character(:), allocatable :: filename
 
-      character(70) :: name1, name2, name3
+      character(80) :: name1, name2, name3
 
       ! Parte 1: parámetros numéricos
-      write(name1, '(A,F10.5,A,F10.5,A,I5)') 'I=', infection_rate, '-R=', recovery_rate, '-S=', seed
+      write(name1, '(A,F10.5,A,F10.5,A,I5)') 'I=', infection_rate, '-R=', recovery_rate, '-S=', seed, '-SN=', start_node
 
       ! Parte 2: modelo
       if (model_type == SIR_MODEL) then
@@ -778,7 +778,7 @@ contains
 
       ! Generar nombre de archivo
       filename = generate_filename(initialized_net, infection_rate, recovery_rate, &
-         seed, model_type, net_name)
+         seed, model_type, start_node, net_name)
 
       !$omp critical(name_write)
       write(*, '(A, A)') 'Filename will be ', filename

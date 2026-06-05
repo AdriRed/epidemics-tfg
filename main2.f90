@@ -662,7 +662,7 @@ contains
 
       character(100) :: name1, name2, name3
       ! Parte 1: parámetros numéricos
-      write(name1, '(A,F10.5,A,F10.5,A,I5,A,I5.5)') 'I=', infection_rate, &
+      write(name1, '(A,F10.5,A,F10.5,A,I10,A,I5.5)') 'I=', infection_rate, &
          '-R=', recovery_rate, '-S=', seed, '-SN=', start_node
 
       ! Parte 2: modelo
@@ -899,7 +899,7 @@ contains
       end do
 
       if (should_write_stats) then
-         if (mod(step_n, 1000) /= 0) then
+         if (mod(step_n, stats_steps) /= 0) then
             sim_stats = sim%get_stats()
             !$omp critical(file_write)
             write(stats_unit, "(E20.10, E20.10, E20.10, E20.10, E20.10)") sim%time, &
